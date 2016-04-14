@@ -2,9 +2,9 @@ function vocle(varargin)
 % audio navigator
 % ideas:
 % - same basic interaction as spclab
-% - save configuration such as window location and size, and zoom between calls to vocle
-% - 
-% - drop down menu for sampling rate (and remember)
+
+% advantages over spclab:
+% - save configuration such as window location, samping rate, and zoom between calls to vocle
 % - A/B test
 % - scroll wheel zooming
 % - stereo support
@@ -31,8 +31,8 @@ bottom_margin = 60;
 top_margin = 16;
 vert_spacing = 28;
 figure_color = [0.88, 0.92, 0.96];
-selection_color = [0.96, 0.97, 0.98];
-segment_color = [0.8, 0.84, 0.88];
+selection_color = [0.95, 0.97, 0.98];
+segment_color = [0.82, 0.86, 0.92];
 zoom_per_scroll_wheel_step = 1.4;
 
 % function-wide variables
@@ -157,6 +157,7 @@ h.WindowButtonUpFcn = '';
         % factor > 1: zoom out; factor < 1: zoom in
         % keep time under mouse constant
         tmouse = get_mouse_pointer_time;
+        tmouse = min(max(tmouse, time_range_view(1)), time_range_view(2)); 
         t0 = tmouse - (tmouse - time_range_view(1)) * factor;
         set_time_range([t0, t0 + diff(time_range_view) * factor]);
     end
@@ -206,8 +207,10 @@ h.WindowButtonUpFcn = '';
             case 'normal'
                 % left mouse: select current axes; setup segment
                 update_selections(src.UserData, 'unique');
-                cursor_line = line([1, 1] * curr_time, src.YLim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
-                segment_patch = patch(ones(1, 4) * curr_time, kron(src.YLim, [1, 1]), segment_color, 'LineStyle', 'none', 'HitTest', 'off');
+                ylim = src.YLim;
+                ylim(2) = ylim(2) * 0.995;
+                cursor_line = line([1, 1] * curr_time, ylim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
+                segment_patch = patch(ones(1, 4) * curr_time, ylim([1, 1, 2, 2]), segment_color, 'LineStyle', 'none', 'HitTest', 'off');
                 uistack(segment_patch, 'bottom');
                 h.WindowButtonUpFcn = @button_up_callback;
                 h.WindowButtonMotionFcn = @button_motion_callback;
