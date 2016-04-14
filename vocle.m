@@ -27,6 +27,9 @@ time_range_full = [0, 0];
 time_range_view = [0, 0];
 zoom_range = [0, 0];
 
+% function-wide variables
+last_button_down = [];
+
 
 % detect if figure exists
 r = groot;
@@ -110,14 +113,8 @@ h.WindowButtonUpFcn = '';
     end
         
 
-
-%     function button_down_callback(src, evt)
-%         disp('bd')
-%         gca.UserData
-%     end
-
     % distribute axes over figure
-    function axes_layout()
+    function axes_layout
         h_width = h.Position(3);
         h_height = h.Position(4);
         hght = (h_height - top_margin - bottom_margin - (num_signals-1) * vert_spacing) / num_signals;
@@ -131,31 +128,52 @@ h.WindowButtonUpFcn = '';
         end
     end
 
+    function zoom_out
+        % zoom out 2x
+        time_range_view = 0.5 * sum(time_range_view) + diff(time_range_view) * [-1 1];
+        time_range_view(1) = max(time_range_full(1), time_range_view(1));
+        time_range_view(2) = min(time_range_full(2), time_range_view(2));
+        plot_zoom;
+    end
+
     function axes_button_down_callback(src, evt)
         disp(['button down on axes ', num2str(src.UserData)])
+        h.SelectionType
         switch(h.SelectionType)
             case 'normal'
-                % either select or mark
-                zoom_range(1) = min(max((h.CurrentPoint(1) - left_margin) / (h_width - left_margin - right_margin), 0), 1);
+                % select current axes
+                
+                zoom_range(1) = (h.CurrentPoint(1) - left_margin) / (h_width - left_margin - right_margin);
                 h.WindowButtonUpFcn = @button_up_callback;
             case 'alt'
-                % zoom out 2x
-                time_range_view = 0.5 * sum(time_range_view) + diff(time_range_view) * [-1 1];
-                time_range_view(1) = max(time_range_full(1), time_range_view(1));
-                time_range_view(2) = min(time_range_full(2), time_range_view(2));
-                plot_zoom;
+                if strcmp(h.CurrentModifier, 'control')
+                    % toggle selection of current axes
+                    
+                else
+                    % zoom out partially
+                    zoom_out;
+                end
             case 'open'
-                % zoom out full
-                time_range_view = time_range_full;
-                plot_zoom;
+                if strcmp(last_button_down, 'normal')
+                    % zoom out full
+                    time_range_view = time_range_full;
+                    plot_zoom;
+                else
+                    % zoom out partially
+                    zoom_out;
+                end
         end
+        last_button_down = h.SelectionType;
     end
     function button_up_callback(src, evt)
-        disp(['button up on axes ', num2str(src.UserData)])
-        zoom_range(2) = min(max((h.CurrentPoint(1) - left_margin) / (h_width - left_margin - right_margin), 0), 1);
-        time_range_view = sort(time_range_view(1) + zoom_range * diff(time_range_view));
-        plot_zoom;
         h.WindowButtonUpFcn = '';
+        disp(['button up on axes ', num2str(src.UserData)])
+        disp('zooming');
+        zoom_range(2) = (h.CurrentPoint(1) - left_margin) / (h_width - left_margin - right_margin);
+        if abs(diff(zoom_range)) > 1e-3
+            time_range_view = sort(time_range_view(1) + zoom_range * diff(time_range_view));
+            plot_zoom;
+        end
     end
 
 %     function axes_checkbox_callback(src, evt)
