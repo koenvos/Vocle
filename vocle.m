@@ -18,6 +18,7 @@ function vocle(varargin)
 % - time on x axis
 % - play
 % - stop
+% - y scaling of segment patch and cursor line when zooming
 % - show patch in all selected axes --> only change selection on button
 
 % settings
@@ -27,11 +28,12 @@ axes_label_font_size = 8;
 % axes
 left_margin = 42;
 right_margin = 20;
-bottom_margin = 60;
+bottom_margin = 90;
 top_margin = 16;
-vert_spacing = 28;
-figure_color = [0.88, 0.92, 0.96];
-selection_color = [0.95, 0.97, 0.98];
+vert_spacing = 27;
+slider_height = 16;
+figure_color = [0.9, 0.93, 0.96];
+selection_color = [0.96, 0.97, 0.98];
 segment_color = [0.82, 0.86, 0.92];
 zoom_per_scroll_wheel_step = 1.4;
 
@@ -96,6 +98,7 @@ for k = 1:num_signals
     h_ax{k}.ButtonDownFcn = @axes_button_down_callback;
 end
 selected_axes = zeros(num_signals, 1);
+time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color, 'Callback', @slider_moved);
 play_button = uicontrol('Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play);
 set_time_range(time_range_full);
 update_layout;
@@ -120,7 +123,8 @@ h.WindowButtonUpFcn = '';
                 h_ax{k}.Position = [left_margin, bottom, width, hght];
             end
         end
-        play_button.Position = [h_width/2-25, 10, 50, 22];
+        play_button.Position = [h_width/2-25, 12, 50, 22];
+        time_slider.Position = [left_margin - 11, bottom_margin - vert_spacing - slider_height, width + 22, slider_height];
     end
 
     function update_selections(ind, type)
@@ -159,7 +163,11 @@ h.WindowButtonUpFcn = '';
         tmouse = get_mouse_pointer_time;
         tmouse = min(max(tmouse, time_range_view(1)), time_range_view(2)); 
         t0 = tmouse - (tmouse - time_range_view(1)) * factor;
-        set_time_range([t0, t0 + diff(time_range_view) * factor]);
+        interval = diff(time_range_view) * factor;
+        t0 = max(t0, time_range_full(1));
+        t1 = t0 + interval;
+        t1 = min(t1, time_range_full(2));
+        set_time_range([t1 - interval, t1]);
     end
 
     % update axis
@@ -181,6 +189,18 @@ h.WindowButtonUpFcn = '';
             miny = -maxy * signals_negative(k);
             h_ax{k}.XLim = time_range_view;
             h_ax{k}.YLim = [miny, maxy];
+        end
+        time_diff = diff(time_range_view);
+        frac_time = time_diff / diff(time_range_full);
+        val = (mean(time_range_view) - time_diff / 2 + 1e-6) / (diff(time_range_full) - time_diff + 2e-6);
+        time_slider.Value = min(max(val, 0), 1);
+        if 0
+            % this fixes the width problem of the slider, but doesn't work
+            % reliably: sometimes the slider is in the wrong position
+            time_slider.SliderStep = [min(frac_time / 4, 0.1), frac_time / (1.0001 - frac_time)];
+        else
+            % when zoomed out fully, the slider should take up the entire width, but doesn't
+            time_slider.SliderStep = [min(frac_time / 4, 0.1), min(frac_time / (1.001 - frac_time), 0.999)];
         end
     end
 
@@ -264,6 +284,12 @@ h.WindowButtonUpFcn = '';
 
     function window_scroll_callback(src, evt)
         zoom_axes(zoom_per_scroll_wheel_step ^ evt.VerticalScrollCount);
+    end
+
+    function slider_moved(src, evt)
+        time_diff = diff(time_range_view);
+        time_center = 0.5 * time_diff + time_slider.Value * (diff(time_range_full) - time_diff);
+        set_time_range(time_center + time_diff * [-0.5, 0.5]);
     end
 
     function play(varargin)
