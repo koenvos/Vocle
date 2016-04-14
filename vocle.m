@@ -6,9 +6,19 @@ function vocle(varargin)
 % - 
 % - drop down menu for sampling rate (and remember)
 % - A/B test
+% - scroll wheel zooming
 % - stereo support
 % - start/stop playback
 % - different sampling rates per sample?
+
+% todo:
+% - show horizontal zoom bar
+% - show segment time duration in top left corner
+% - FS
+% - time on x axis
+% - play
+% - stop
+% - show patch in all selected axes --> only change selection on button
 
 % settings
 fig_no = 9372;
@@ -17,17 +27,19 @@ axes_label_font_size = 8;
 % axes
 left_margin = 42;
 right_margin = 20;
-bottom_margin = 80;
+bottom_margin = 60;
 top_margin = 16;
 vert_spacing = 28;
-selection_color = 0.98 * [1, 1, 1];
-segment_color = 0.85 * [1, 1, 1];
-
+figure_color = [0.88, 0.92, 0.96];
+selection_color = [0.96, 0.97, 0.98];
+segment_color = [0.8, 0.84, 0.88];
+zoom_per_scroll_wheel_step = 1.4;
 
 % function-wide variables
 time_range_full = [0, 0];
 time_range_view = [0, 0];
 last_button_down = [];
+cursor_line = [];
 segment_patch = [];
 
 
@@ -45,6 +57,7 @@ if ~fig_exist
     h.ToolBar = 'none';
     h.MenuBar = 'none';
     h.Name = ' vocle';
+    h.Color = figure_color;
     if config_exist
         load_config();
     end
@@ -83,19 +96,19 @@ for k = 1:num_signals
     h_ax{k}.ButtonDownFcn = @axes_button_down_callback;
 end
 selected_axes = zeros(num_signals, 1);
-play_button = uicontrol('Style', 'pushbutton', 'String', 'Play', 'Callback', @play);
+play_button = uicontrol('Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play);
 set_time_range(time_range_full);
 update_layout;
-update_selections;
+update_selections([], 'reset');
 
 % set figure callbacks
 h.CloseRequestFcn = @window_close_callback;
 h.SizeChangedFcn = @window_resize_callback;
 h.ButtonDownFcn = @window_button_down_callback;
+h.WindowScrollWheelFcn = @window_scroll_callback;
 h.WindowButtonUpFcn = '';
 
 
-    % distribute axes over figure
     function update_layout
         h_width = h.Position(3);
         h_height = h.Position(4);
@@ -107,10 +120,25 @@ h.WindowButtonUpFcn = '';
                 h_ax{k}.Position = [left_margin, bottom, width, hght];
             end
         end
-        play_button.Position = [h_width/2-25, 10, 50, 20];
+        play_button.Position = [h_width/2-25, 10, 50, 22];
     end
 
-    function update_selections
+    function update_selections(ind, type)
+        if num_signals == 1
+            selected_axes = 1;
+        end
+        switch(type)
+            case {'unique', 'reset'}
+                selected_axes(:) = 0;
+                selected_axes(ind) = 1;
+            case 'toggle'
+                selected_axes(ind) = 1 - selected_axes(ind);
+        end
+        if sum(selected_axes) == 1
+            play_button.Enable = 'on';
+        else
+            play_button.Enable = 'off';
+        end
         for k = 1:num_signals
             if selected_axes(k)
                 h_ax{k}.Color = [1, 1, 1];
@@ -125,17 +153,27 @@ h.WindowButtonUpFcn = '';
         t = time_range_view(1) + frac * diff(time_range_view);
     end
 
+    function zoom_axes(factor)
+        % factor > 1: zoom out; factor < 1: zoom in
+        % keep time under mouse constant
+        tmouse = get_mouse_pointer_time;
+        t0 = tmouse - (tmouse - time_range_view(1)) * factor;
+        set_time_range([t0, t0 + diff(time_range_view) * factor]);
+    end
+
     % update axis
     function set_time_range(range)
         time_range_view(1) = max(range(1), time_range_full(1));
         time_range_view(2) = min(range(2), time_range_full(2));
+        time_range_view(2) = max(time_range_view(1)+1e-4, time_range_view(2));
         % adjust axis, update y scaling
         for k = 1:num_signals
             s = signals{k};
-            if time_range_view(1) <= signal_lenghts(k)
+            if time_range_view(1) <= signal_lenghts(k) && time_range_view(2) >= 1
                 t0 = max(round(time_range_view(1)), 1);
                 t1 = min(round(time_range_view(2)), signal_lenghts(k));
                 maxy = 1.1 * max(max(abs(s(t0:t1, :))));
+                maxy = max(maxy, 1e-9);
             else
                 maxy = 1;
             end
@@ -149,6 +187,8 @@ h.WindowButtonUpFcn = '';
         
         disp(['button down on axes ', num2str(src.UserData), '; type: ' h.SelectionType]);
         
+        curr_time = get_mouse_pointer_time;
+        % remove segment patch (but remember its range)
         if ~isempty(segment_patch)
             segment_range = sort(segment_patch.Vertices(1:2, 1));
             delete(segment_patch);
@@ -156,27 +196,33 @@ h.WindowButtonUpFcn = '';
         else
             segment_range = [];
         end
+        % remove cursor line
+        if ~isempty(cursor_line)
+            delete(cursor_line);
+            cursor_line = [];
+        end
+        % deal with different types of mouse clicks
         switch(h.SelectionType)
             case 'normal'
                 % left mouse: select current axes; setup segment
-                selected_axes(:) = 0;
-                selected_axes(src.UserData) = 1;
-                update_selections;
-                segment_patch = patch(ones(1, 4) * get_mouse_pointer_time, kron(src.YLim, [1, 1]), ...
-                    segment_color, 'LineStyle', 'none', 'HitTest', 'off');
+                update_selections(src.UserData, 'unique');
+                cursor_line = line([1, 1] * curr_time, src.YLim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
+                segment_patch = patch(ones(1, 4) * curr_time, kron(src.YLim, [1, 1]), segment_color, 'LineStyle', 'none', 'HitTest', 'off');
                 uistack(segment_patch, 'bottom');
                 h.WindowButtonUpFcn = @button_up_callback;
                 h.WindowButtonMotionFcn = @button_motion_callback;
             case 'alt'
                 if strcmp(h.CurrentModifier, 'control')
                     % Ctrl + left mouse: toggle selection of current axes
-                    selected_axes(src.UserData) = 1 - selected_axes(src.UserData);
-                    update_selections;
+                update_selections(src.UserData, 'toggle');
                 else
                     % right mouse
-                    if isempty(segment_range)
-                        % zoom out 2x
-                        set_time_range(0.5 * sum(time_range_view) + diff(time_range_view) * [-1 1]);
+                    selected_axes(:) = 0;
+                    selected_axes(src.UserData) = 1;
+                    update_selections(src.UserData, 'unique');
+                    if isempty(segment_range) || diff(segment_range) == 0
+                        % zoom out 2x around current time
+                        zoom_axes(2);
                     else
                         % zoom to selection
                         set_time_range(segment_range);
@@ -191,11 +237,10 @@ h.WindowButtonUpFcn = '';
                     % double click 'alt': treat as second of two separate clicks
                     if strcmp(h.CurrentModifier, 'control')
                         % Ctrl + left mouse: toggle selection of current axes
-                        selected_axes(src.UserData) = 1 - selected_axes(src.UserData);
-                        update_selections;
+                        update_selections(src.UserData, 'toggle');
                     else
                         % zoom out 2x
-                        set_time_range(0.5 * sum(time_range_view) + diff(time_range_view) * [-1 1]);
+                        zoom_axes(2);
                     end
                 end
         end
@@ -205,19 +250,21 @@ h.WindowButtonUpFcn = '';
         h.WindowButtonUpFcn = '';
         h.WindowButtonMotionFcn = '';
     end
-    function button_motion_callback(src, etc)
+    function button_motion_callback(src, evt)
+        % mouse is dragged across an axes
         segment_patch.Vertices(2:3,1) = get_mouse_pointer_time;
+        if ~isempty(cursor_line)
+            delete(cursor_line);
+            cursor_line = [];
+        end
+    end
+
+    function window_scroll_callback(src, evt)
+        zoom_axes(zoom_per_scroll_wheel_step ^ evt.VerticalScrollCount);
     end
 
     function play(varargin)
         if strcmp(play_button.String, 'Play')
-            if sum(selected_axes) == 0
-                disp('Please select a signal');
-                return;
-            elseif sum(selected_axes) > 1
-                disp('Please select only one signal');
-                return;
-            end
             play_button.String = 'Stop';
         else
             play_button.String = 'Play';
@@ -227,8 +274,7 @@ h.WindowButtonUpFcn = '';
 
     function window_button_down_callback(src, evt)
         % unselect all axes
-        selected_axes(:) = 0;
-        update_selections;
+        update_selections([], 'reset');
     end
 
     function window_resize_callback(src, evt)
