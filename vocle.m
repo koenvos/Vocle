@@ -3,7 +3,7 @@ function vocle(varargin)
 % 
 % same basic interaction as spclab
 % advantages over spclab:
-% - save configuration such as window location, samping rate, and zoom between calls to vocle
+% - save configuration such as window location, samping rate between calls to vocle
 % - scroll wheel zooming
 % - stereo support
 % - A/B test
@@ -11,7 +11,7 @@ function vocle(varargin)
 % - different sampling rates per sample?
 
 % todo:
-% - show segment time duration in top left corner
+% - save config on window move
 % - play
 % - stop
 % - animated cursor
@@ -30,7 +30,7 @@ top_margin = 16;
 vert_spacing = 27;
 slider_height = 16;
 figure_color = [0.915, 0.918, 0.92];
-selection_color = [0.952, 0.956, 0.96];
+selection_color = [0.945, 0.946, 0.95];
 segment_color = [0.88, 0.92, 0.96];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
@@ -86,6 +86,8 @@ time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, ...
     'BackgroundColor', selection_color, 'Callback', @slider_moved_callback);
 text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', ...
     'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');
+text_segment = uicontrol(h, 'Style', 'text', 'FontName', 'Helvetica', ...
+    'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
 play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play);
 popup = uicontrol(h, 'Style', 'popup', 'String', ...
     {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
@@ -139,7 +141,7 @@ h.WindowButtonUpFcn = '';
             play_button.Enable = 'off';
         end
         for kk = 1:num_signals
-            h_ax{kk}.LineWidth = 0.3 + selected_axes(kk) * 0.3;
+            h_ax{kk}.LineWidth = 0.5;
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
         end
     end
@@ -196,6 +198,7 @@ h.WindowButtonUpFcn = '';
         max_time = max(signal_lengths) / fs;
         time_range_view(1) = min(max(range(1), 0), max_time - min_delta);
         time_range_view(2) = max(min(range(2), max_time), 0 + min_delta);
+        time_range_view = time_range_view + max(min_delta - diff(time_range_view), 0) * [-0.5, 0.5];
         % update signals
         plot_signals;
         % update slider
@@ -252,6 +255,7 @@ h.WindowButtonUpFcn = '';
                 update_selections(n_axes, 'unique');
                 segment_range = curr_time * [1, 1];
                 draw_patches;
+                text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 16, 80, 13];
                 % cursor_line = line([1, 1] * curr_time, ylim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
                 h.WindowButtonUpFcn = @button_up_callback;
                 h.WindowButtonMotionFcn = @button_motion_callback;
@@ -294,10 +298,19 @@ h.WindowButtonUpFcn = '';
     function button_up_callback(~, ~)
         h.WindowButtonUpFcn = '';
         h.WindowButtonMotionFcn = '';
+        text_segment.Visible = 'off';
     end
 
     function button_motion_callback(~, ~)
         segment_range(2) = get_mouse_pointer_time;
+        delta = abs(diff(segment_range));
+        if delta < 1
+            str = [num2str(round(delta * 1e3)), ' ms (', num2str(round(delta * fs)), ')'];
+        else
+            str = num2str(delta, '%.3f');
+        end
+        text_segment.String = str;
+        text_segment.Visible = 'on';
         draw_patches;
     end
 
