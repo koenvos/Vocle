@@ -35,7 +35,15 @@ selection_color = [0.945, 0.946, 0.95];
 segment_color = [0.88, 0.92, 0.96];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
-fs = 48000;  % default; overwritten if config file exists
+
+% check if first argument is sampling rate
+if isscalar(varargin{1})
+    fs = varargin{1};
+    fs_given = 1;
+else
+    fs = 48000;  % default; overwritten if config file exists
+    fs_given = 0;
+end
 
 % detect if figure exists
 r = groot;
@@ -50,7 +58,7 @@ h.Name = ' Vocle';
 h.Color = figure_color;
 
 % load configuration, if possible
-load_config(fig_exist);
+load_config(fig_exist, fs_given);
 
 % process signals
 num_signals = length(varargin);
@@ -94,9 +102,9 @@ text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', ...
 text_segment = uicontrol(h, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
 play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play);
-popup = uicontrol(h, 'Style', 'popup', 'String', ...
+popup_fs = uicontrol(h, 'Style', 'popup', 'String', ...
     {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
-popup.Value = find(str2double(popup.String) == fs);
+popup_fs.Value = find(str2double(popup_fs.String) == fs);
 update_layout;
 
 % show signals
@@ -124,7 +132,7 @@ h.WindowButtonUpFcn = '';
         end
         play_button.Position = [h_width/2-25, 12, 50, 22];
         time_slider.Position = [left_margin-10, bottom_margin-vert_spacing-slider_height, width+20, slider_height];
-        popup.Position = [h_width-70, 12, 58, 22];
+        popup_fs.Position = [h_width-70, 12, 58, 22];
         text_fs.Position = [h_width-147, 9, 74, 22];
     end
 
@@ -260,7 +268,7 @@ h.WindowButtonUpFcn = '';
             text_segment.Visible = 'on';
             % the function below will set text_segment.Position
         end
-        % pass through
+        % pass through to next function
         axes_button_down_callback(gca, []);
     end
 
@@ -328,7 +336,7 @@ h.WindowButtonUpFcn = '';
         segment_range(2) = get_mouse_pointer_time;
         delta = abs(diff(segment_range));
         if delta < 1
-            str = [num2str(round(delta * 1e3)), ' ms (', num2str(round(delta * fs)), ')'];
+            str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(round(delta * fs)), ')'];
         else
             str = num2str(delta, '%.3f');
         end
@@ -381,7 +389,7 @@ h.WindowButtonUpFcn = '';
         closereq;
     end
 
-    function load_config(keep_position)
+    function load_config(keep_position, keep_fs)
         disp('load config');
         if exist(config_file, 'file')
             load(config_file, 'config');
@@ -389,7 +397,9 @@ h.WindowButtonUpFcn = '';
                 if ~keep_position
                     h.Position = config.Position;
                 end
-                fs = config.fs;
+                if ~keep_fs
+                    fs = config.fs;
+                end
             catch
                 warning('invalid config file');
             end
