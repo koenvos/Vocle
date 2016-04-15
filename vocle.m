@@ -44,7 +44,7 @@ end
 segment_color = [0.88, 0.92, 0.96];
 zoom_per_scroll_wheel_step = 1.3;
 ylim_margin = 1.1;
-fs = 48000;
+fs = 48000;  % default; overwritten if config file exists
 
 % function-wide variables
 h_ax = [];
@@ -55,29 +55,16 @@ last_button_down = [];
 %cursor_line = [];
 segment_patch = [];
 
-
-% detect if figure exists
-r = groot;
-fig_exist = ~isempty(r.Children) && sum([r.Children(:).Number] == fig_no);
-
-% detect if config file exists
-config_exist = exist(config_file, 'file');
-
-% create figure if needed and sync with config file
+% create figure if doesn't exist yet and sync with config file
 h = figure(fig_no);
-if ~fig_exist
-    h.NumberTitle = 'off';
-    h.ToolBar = 'none';
-    h.MenuBar = 'none';
-    h.Name = ' Vocle';
-    h.Color = figure_color;
-    if config_exist
-        load_config;
-    end
+h.NumberTitle = 'off';
+h.ToolBar = 'none';
+h.MenuBar = 'none';
+h.Name = ' Vocle';
+h.Color = figure_color;
+if exist(config_file, 'file')
+    load_config;
 end
-h_width = h.Position(3);
-h_height = h.Position(4);
-write_config();
 
 % process signals
 num_signals = length(varargin);
@@ -97,9 +84,8 @@ for k = 1:num_signals
     signals_ylim(k) = ylim_margin * max(abs(s_));
 end
 
+% put elements on UI
 clf;
-% create axes, one per input signal
-selected_axes = zeros(num_signals, 1);
 h_ax = cell(num_signals, 1);
 for k = 1:num_signals
     h_ax{k} = axes;
@@ -107,12 +93,14 @@ for k = 1:num_signals
 end
 time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color, 'Callback', @slider_moved);
 popup = uicontrol(h, 'Style', 'popup', 'String', {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
-text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', 'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');    
+text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', 'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');
 play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play);
 update_layout;
 
+% show signals
+update_selections([], 'reset');
 plot_signals;
-       
+
 % set figure callbacks
 h.CloseRequestFcn = @window_close_callback;
 h.SizeChangedFcn = @window_resize_callback;
@@ -139,6 +127,7 @@ h.WindowButtonUpFcn = '';
         set_time_range(time_range_full);
     end
 
+    % set positions of UI elements
     function update_layout
         h_width = h.Position(3);
         h_height = h.Position(4);
@@ -159,13 +148,14 @@ h.WindowButtonUpFcn = '';
     function update_selections(ind, type)
         if num_signals == 1
             selected_axes = 1;
-        end
-        switch(type)
-            case {'unique', 'reset'}
-                selected_axes(:) = 0;
-                selected_axes(ind) = 1;
-            case 'toggle'
-                selected_axes(ind) = 1 - selected_axes(ind);
+        else
+            switch(type)
+                case {'unique', 'reset'}
+                    selected_axes = zeros(num_signals, 1);
+                    selected_axes(ind) = 1;
+                case 'toggle'
+                    selected_axes(ind) = 1 - selected_axes(ind);
+            end
         end
         if sum(selected_axes) == 1
             play_button.Enable = 'on';
@@ -178,7 +168,7 @@ h.WindowButtonUpFcn = '';
     end
 
     function t = get_mouse_pointer_time
-        frac = (h.CurrentPoint(1) - left_margin) / (h_width - left_margin - right_margin);
+        frac = (h.CurrentPoint(1) - left_margin) / (h.Position(3) - left_margin - right_margin);
         t = time_range_view(1) + frac * diff(time_range_view);
     end
 
@@ -195,7 +185,7 @@ h.WindowButtonUpFcn = '';
         set_time_range([t1 - interval, t1]);
     end
 
-    % update axis
+% update axis
     function set_time_range(range)
         time_range_view(1) = max(range(1), time_range_full(1));
         time_range_view(2) = min(range(2), time_range_full(2));
@@ -332,10 +322,12 @@ h.WindowButtonUpFcn = '';
 
     function change_fs_callback(src, evt)
         fs = str2double(src.String{src.Value});
+        write_config();
         plot_signals;
     end
 
     function window_resize_callback(src, evt)
+        write_config();
         update_layout();
     end
 
