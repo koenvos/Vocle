@@ -6,13 +6,12 @@ function vocle(varargin)
 % - save configuration such as window location, samping rate between calls to vocle
 % - scroll wheel zooming
 % - stereo support
+% - stop playback
 % - A/B test
-% - start/stop playback
 % - different sampling rates per sample?
 
 % todo:
-% - play
-% - stop
+% - play segment
 % - animated cursor
 % - show patch in all selected axes 
 % - A/B test
@@ -35,6 +34,9 @@ selection_color = [0.945, 0.946, 0.95];
 segment_color = [0.88, 0.92, 0.96];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
+playback_fs = 48000;
+playback_bits = 24;
+playback_dBov = -3;
 
 % check if first argument is sampling rate
 if isscalar(varargin{1})
@@ -84,9 +86,9 @@ h_ax = [];
 selected_axes = [];
 time_range_view = [];
 last_button_down = [];
-%cursor_line = [];
 segment_range = [];
 segment_patches = cell(num_signals, 1);
+player = [];
 
 % put elements on UI
 clf;
@@ -101,7 +103,7 @@ text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', ...
     'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');
 text_segment = uicontrol(h, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
-play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play);
+play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play_callback);
 popup_fs = uicontrol(h, 'Style', 'popup', 'String', ...
     {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
 popup_fs.Value = find(str2double(popup_fs.String) == fs);
@@ -290,6 +292,9 @@ h.WindowButtonUpFcn = '';
                 % cursor_line = line([1, 1] * curr_time, ylim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
                 h.WindowButtonUpFcn = @button_up_callback;
                 h.WindowButtonMotionFcn = @button_motion_callback;
+            case 'extend'
+                update_selections(n_axes, 'unique');
+                play_callback;
             case 'alt'
                 if strcmp(h.CurrentModifier, 'control')
                     % Ctrl + left mouse: toggle selection of current axes
@@ -309,18 +314,22 @@ h.WindowButtonUpFcn = '';
                 end
             case 'open'
                 % double click
-                if strcmp(last_button_down, 'normal')
-                    % double click left: zoom out full
-                    set_time_range([0, inf]);
-                else
-                    % double click 'alt': treat as second of two separate clicks
-                    if strcmp(h.CurrentModifier, 'control')
-                        % Ctrl + left mouse: toggle selection of current axes
-                        update_selections(n_axes, 'toggle');
-                    else
-                        % zoom out 2x
-                        zoom_axes(2);
-                    end
+                switch(last_button_down)
+                    case 'normal'
+                        % double click left: zoom out full
+                        set_time_range([0, inf]);
+                    case 'extend'
+                        update_selections(n_axes, 'unique');
+                        play_callback;
+                    case 'alt'
+                        % double click 'alt': treat as second of two separate clicks
+                        if strcmp(h.CurrentModifier, 'control')
+                            % Ctrl + left mouse: toggle selection of current axes
+                            update_selections(n_axes, 'toggle');
+                        else
+                            % zoom out 2x
+                            zoom_axes(2);
+                        end
                 end
         end
         last_button_down = h.SelectionType;
@@ -355,13 +364,38 @@ h.WindowButtonUpFcn = '';
         set_time_range(time_center + time_diff * [-0.5, 0.5], 0);
     end
 
-    function play(varargin)
+    function play_callback(varargin)
         if strcmp(play_button.String, 'Play')
+            n_axes = find(selected_axes, 1);
+            s = signals{n_axes};
+            if ~isempty(segment_range) && abs(diff(segment_range)) > 0
+                t0 = min(segment_range);
+                t1 = max(segment_range);
+            else
+                t0 = time_range_view(1);
+                t1 = time_range_view(2);
+            end
+            t0 = max(round(t0 * fs), 1);
+            t1 = min(round(t1 * fs), signal_lengths(n_axes));
+            s = s(t0:t1, :) / signals_ylim(n_axes) * 10^(0.05*playback_dBov);
+            [smpls, nchan] = size(s);
+            % smooth fade in/out
+            fade_smpls = fs / 100;
+            if smpls > 2 * fade_smpls
+                win = sin((1:fade_smpls)'/(fade_smpls+1)*pi/2) .^ 2;
+                t = 1:fade_smpls;
+                s(t, :) = bsxfun(@times, s(t, :), win);
+                s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
+            end
+            s = resample([zeros(round(fs/50), nchan); s; zeros(round(fs/50), nchan)], playback_fs, fs);
+            s = min(max(s, -1), 1);
+            player = audioplayer(s, playback_fs, playback_bits);
+            play(player);
             play_button.String = 'Stop';
         else
+            stop(player);
             play_button.String = 'Play';
         end
-        disp('playing');
     end
 
     function window_button_down_callback(~, ~)
