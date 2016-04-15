@@ -36,8 +36,10 @@ if 0
     selection_color = [0.95, 0.97, 0.985];
 else
     % gray colors
-    figure_color = [0.935, 0.939, 0.94];
-    selection_color = [0.973, 0.976, 0.978];
+    %figure_color = [0.935, 0.939, 0.94];
+    figure_color = [0.915, 0.919, 0.92];
+    %selection_color = [0.973, 0.976, 0.978];
+    selection_color = [0.963, 0.967, 0.97];
 end
 segment_color = [0.88, 0.92, 0.96];
 zoom_per_scroll_wheel_step = 1.3;
