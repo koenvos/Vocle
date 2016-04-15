@@ -12,6 +12,7 @@ function vocle(varargin)
 % - different sampling rates per sample?
 
 % todo:
+% - clearer selected axis indication: bolder outline line?
 % - show segment time duration in top left corner
 % - play
 % - stop
@@ -30,17 +31,10 @@ bottom_margin = 90;
 top_margin = 16;
 vert_spacing = 27;
 slider_height = 16;
-if 0
-    % blue colors
-    figure_color = [0.9, 0.93, 0.96];
-    selection_color = [0.95, 0.97, 0.985];
-else
-    % gray colors
-    %figure_color = [0.935, 0.939, 0.94];
-    figure_color = [0.915, 0.919, 0.92];
-    %selection_color = [0.973, 0.976, 0.978];
-    selection_color = [0.963, 0.967, 0.97];
-end
+%figure_color = [0.935, 0.939, 0.94];
+figure_color = [0.915, 0.918, 0.92];
+selection_color = [0.952, 0.956, 0.96];
+%selection_color = [0.94, 0.945, 0.94];
 segment_color = [0.88, 0.92, 0.96];
 zoom_per_scroll_wheel_step = 1.3;
 ylim_margin = 1.1;
@@ -62,9 +56,9 @@ h.ToolBar = 'none';
 h.MenuBar = 'none';
 h.Name = ' Vocle';
 h.Color = figure_color;
-if exist(config_file, 'file')
-    load_config;
-end
+
+% load configuration, if possible
+load_config;
 
 % process signals
 num_signals = length(varargin);
@@ -91,15 +85,20 @@ for k = 1:num_signals
     h_ax{k} = axes;
     h_ax{k}.Units = 'pixels';
 end
-time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color, 'Callback', @slider_moved);
-popup = uicontrol(h, 'Style', 'popup', 'String', {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
-text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', 'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');
+time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, ...
+    'BackgroundColor', selection_color, 'Callback', @slider_moved);
+text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', ...
+    'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');
 play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play);
+popup = uicontrol(h, 'Style', 'popup', 'String', ...
+    {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
+popup.Value = find(str2double(popup.String) == fs);
 update_layout;
 
 % show signals
 update_selections([], 'reset');
-plot_signals;
+time_range_full = [0, max(signal_times)];
+set_time_range_view(time_range_full);
 
 % set figure callbacks
 h.CloseRequestFcn = @window_close_callback;
@@ -108,26 +107,7 @@ h.ButtonDownFcn = @window_button_down_callback;
 h.WindowScrollWheelFcn = @window_scroll_callback;
 h.WindowButtonUpFcn = '';
 
-    % plot signals at the right sampling rate
-    function plot_signals
-        % make sure the correct sampling rate is shown in drop-down menu
-        popup.Value = find(str2double(popup.String) == fs);
-        for kk = 1:num_signals
-            t = (1:length(signals{kk})) / fs;
-            signal_times(kk) = t(end);
-            plot(h_ax{kk}, t, signals{kk}, 'HitTest', 'off');
-            h_ax{kk}.UserData = kk;
-            h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
-            h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
-            h_ax{kk}.Layer = 'top';
-            h_ax{kk}.FontSize = axes_label_font_size;
-        end
-        segment_patch = [];
-        time_range_full = [0, max(signal_times)];
-        set_time_range(time_range_full);
-    end
-
-    % set positions of UI elements
+    % position UI elements
     function update_layout
         h_width = h.Position(3);
         h_height = h.Position(4);
@@ -140,7 +120,7 @@ h.WindowButtonUpFcn = '';
             end
         end
         play_button.Position = [h_width/2-25, 12, 50, 22];
-        time_slider.Position = [left_margin - 11, bottom_margin - vert_spacing - slider_height, width + 22, slider_height];
+        time_slider.Position = [left_margin-10, bottom_margin-vert_spacing-slider_height, width+20, slider_height];
         popup.Position = [h_width-70, 12, 58, 22];
         text_fs.Position = [h_width-147, 9, 74, 22];
     end
@@ -163,7 +143,22 @@ h.WindowButtonUpFcn = '';
             play_button.Enable = 'off';
         end
         for kk = 1:num_signals
+            h_ax{kk}.LineWidth = 0.3 + selected_axes(kk) * 0.3;
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
+        end
+    end
+
+    % plot signals
+    function plot_signals
+        for kk = 1:num_signals
+            t = (1:length(signals{kk})) / fs;
+            signal_times(kk) = t(end);
+            plot(h_ax{kk}, t, signals{kk}, 'HitTest', 'off');
+            h_ax{kk}.UserData = kk;
+            h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
+            h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
+            h_ax{kk}.Layer = 'top';
+            h_ax{kk}.FontSize = axes_label_font_size;
         end
     end
 
@@ -182,14 +177,14 @@ h.WindowButtonUpFcn = '';
         t0 = max(t0, time_range_full(1));
         t1 = t0 + interval;
         t1 = min(t1, time_range_full(2));
-        set_time_range([t1 - interval, t1]);
+        set_time_range_view([t1 - interval, t1]);
     end
 
-% update axis
-    function set_time_range(range)
-        time_range_view(1) = max(range(1), time_range_full(1));
-        time_range_view(2) = min(range(2), time_range_full(2));
-        time_range_view(2) = max(time_range_view(1)+1e-4, time_range_view(2));
+    % update axis
+    function set_time_range_view(range)
+        min_delta = 1e-4;
+        time_range_view(1) = min(max(range(1), time_range_full(1)), time_range_full(2) - min_delta);
+        time_range_view(2) = max(min(range(2), time_range_full(2)), time_range_full(1) + min_delta);
         % adjust axis, update y scaling
         for kk = 1:num_signals
             s = signals{kk};
@@ -205,6 +200,7 @@ h.WindowButtonUpFcn = '';
             h_ax{kk}.XLim = time_range_view;
             h_ax{kk}.YLim = [miny, maxy];
         end
+        % update slider
         time_diff = diff(time_range_view);
         frac_time = time_diff / diff(time_range_full);
         val = (mean(time_range_view) - time_diff / 2 + 1e-6) / (diff(time_range_full) - time_diff + 2e-6);
@@ -219,19 +215,18 @@ h.WindowButtonUpFcn = '';
         end
     end
 
-    function axes_button_down_callback(src, evt)
+    function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         disp(['button down on axes ', num2str(n_axes), '; type: ' h.SelectionType]);
-        
         curr_time = get_mouse_pointer_time;
         % remove segment patch (but remember its range)
         if ~isempty(segment_patch)
             segment_range = sort(segment_patch.Vertices(1:2, 1));
             delete(segment_patch);
-            segment_patch = [];
         else
             segment_range = [];
         end
+        segment_patch = [];
         % remove cursor line
         %         if ~isempty(cursor_line)
         %             delete(cursor_line);
@@ -242,7 +237,7 @@ h.WindowButtonUpFcn = '';
             case 'normal'
                 % left mouse: select current axes; setup segment
                 update_selections(n_axes, 'unique');
-                %                cursor_line = line([1, 1] * curr_time, ylim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
+                % cursor_line = line([1, 1] * curr_time, ylim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
                 segment_patch = patch(ones(1, 4) * curr_time, signals_ylim(n_axes) * [-1, -1, 1, 1], ...
                     segment_color, 'LineStyle', 'none', 'HitTest', 'off');
                 uistack(segment_patch, 'bottom');
@@ -262,14 +257,14 @@ h.WindowButtonUpFcn = '';
                         zoom_axes(2);
                     else
                         % zoom to selection
-                        set_time_range(segment_range);
+                        set_time_range_view(segment_range);
                     end
                 end
             case 'open'
                 % double click
                 if strcmp(last_button_down, 'normal')
                     % double click left: zoom out full
-                    set_time_range(time_range_full);
+                    set_time_range_view(time_range_full);
                 else
                     % double click 'alt': treat as second of two separate clicks
                     if strcmp(h.CurrentModifier, 'control')
@@ -283,11 +278,11 @@ h.WindowButtonUpFcn = '';
         end
         last_button_down = h.SelectionType;
     end
-    function button_up_callback(src, evt)
+    function button_up_callback(~, ~)
         h.WindowButtonUpFcn = '';
         h.WindowButtonMotionFcn = '';
     end
-    function button_motion_callback(src, evt)
+    function button_motion_callback(~, ~)
         % mouse is dragged across an axes
         segment_patch.Vertices(2:3,1) = get_mouse_pointer_time;
         %         if ~isempty(cursor_line)
@@ -296,14 +291,14 @@ h.WindowButtonUpFcn = '';
         %         end
     end
 
-    function window_scroll_callback(src, evt)
+    function window_scroll_callback(~, evt)
         zoom_axes(zoom_per_scroll_wheel_step ^ evt.VerticalScrollCount);
     end
 
-    function slider_moved(src, evt)
+    function slider_moved(~, ~)
         time_diff = diff(time_range_view);
         time_center = 0.5 * time_diff + time_slider.Value * (diff(time_range_full) - time_diff);
-        set_time_range(time_center + time_diff * [-0.5, 0.5]);
+        set_time_range_view(time_center + time_diff * [-0.5, 0.5]);
     end
 
     function play(varargin)
@@ -315,37 +310,39 @@ h.WindowButtonUpFcn = '';
         disp('playing');
     end
 
-    function window_button_down_callback(src, evt)
+    function window_button_down_callback(~, ~)
         % unselect all axes
         update_selections([], 'reset');
     end
 
-    function change_fs_callback(src, evt)
+    function change_fs_callback(src, ~)
         fs = str2double(src.String{src.Value});
         write_config();
         plot_signals;
     end
 
-    function window_resize_callback(src, evt)
+    function window_resize_callback(~, ~)
         write_config();
         update_layout();
     end
 
-    function window_close_callback(src, evt)
+    function window_close_callback(~, ~)
         write_config();
         closereq;
     end
 
     function load_config
         disp('load config');
-        load(config_file, 'config');
-        try
-            h.Position = config.Position;
-            fs = config.fs;
-        catch
-            % invalid config file
-            warning('deleting invalid config file');
-            delete(config_file);
+        if exist(config_file, 'file')
+            load(config_file, 'config');
+            try
+                h.Position = config.Position;
+                fs = config.fs;
+            catch
+                % invalid config file
+                warning('config file is invalid; deleting');
+                delete(config_file);
+            end
         end
     end
 
