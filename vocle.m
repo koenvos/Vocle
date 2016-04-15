@@ -151,7 +151,7 @@ h.WindowButtonUpFcn = '';
         play_button.Position = [h_width/2-25, 12, 50, 22];
         time_slider.Position = [left_margin - 11, bottom_margin - vert_spacing - slider_height, width + 22, slider_height];
         popup.Position = [h_width-70, 12, 58, 22];
-        text_fs.Position = [h_width-143, 9, 70, 22];
+        text_fs.Position = [h_width-147, 9, 74, 22];
     end
 
     function update_selections(ind, type)
