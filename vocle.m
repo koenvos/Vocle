@@ -148,19 +148,19 @@ h.WindowButtonUpFcn = '';
     function plot_signals
         delete_patches;   % they wouldn't survive the plotting
         for kk = 1:num_signals
-            t = (1:signal_lengths(kk)) / fs;
+            t0 = max(floor(time_range_view(1)*fs), 1);
+            t1 = min(ceil(time_range_view(2)*fs), signal_lengths(kk));
             s = signals{kk};
-            plot(h_ax{kk}, t, s, 'HitTest', 'off');
+            s_ = reduce(s(t0:t1, :));
+            t = (t0 + (0:size(s_, 1)-1) * (t1-t0+1) / length(s_)) / fs;
+            plot(h_ax{kk}, t, s_, 'HitTest', 'off');
             h_ax{kk}.UserData = kk;
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
             h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
             h_ax{kk}.Layer = 'top';
             h_ax{kk}.FontSize = axes_label_font_size;
-            
-            if time_range_view(1) <= signal_lengths(kk) / fs
-                t0 = max(round(time_range_view(1)*fs), 1);
-                t1 = min(round(time_range_view(2)*fs), length(s));
-                maxy = 1.1 * max(max(abs(s(t0:t1, :))));
+            if ~isempty(s_)
+                maxy = 1.1 * max(abs(s_(:)));
                 maxy = max(maxy, 1e-9);
             else
                 maxy = 1;
@@ -366,4 +366,21 @@ h.WindowButtonUpFcn = '';
         config.fs = fs;
         save(config_file, 'config');
     end
+end
+
+% took this from spclab:
+function out = reduce(x)
+N=1e4;
+[L, chans] = size(x);
+if length(x) > 4*N
+    d = ceil(L/N);
+    N = ceil(L/d);
+    out = zeros(2*N, chans);
+    for c = 1:chans
+        x2=reshape([x(:, c); x(end, c) * ones(N*d-length(x), 1)], d, N);
+        out(:, c)=reshape([max(x2); min(x2)], 2*N, 1);
+    end
+else
+    out=x;
+end
 end
