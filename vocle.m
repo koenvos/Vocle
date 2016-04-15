@@ -11,7 +11,6 @@ function vocle(varargin)
 % - different sampling rates per sample?
 
 % todo:
-% - save config on window move
 % - play
 % - stop
 % - animated cursor
@@ -36,7 +35,11 @@ zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
 fs = 48000;  % default; overwritten if config file exists
 
-% create figure if doesn't exist yet and sync with config file
+% detect if figure exists
+r = groot;
+fig_exist = ~isempty(r.Children) && sum([r.Children(:).Number] == fig_no);
+
+% create figure if doesn't exist yet 
 h = figure(fig_no);
 h.NumberTitle = 'off';
 h.ToolBar = 'none';
@@ -45,7 +48,7 @@ h.Name = ' Vocle';
 h.Color = figure_color;
 
 % load configuration, if possible
-load_config;
+load_config(fig_exist);
 
 % process signals
 num_signals = length(varargin);
@@ -358,22 +361,23 @@ h.WindowButtonUpFcn = '';
         closereq;
     end
 
-    function load_config
+    function load_config(keep_position)
         disp('load config');
         if exist(config_file, 'file')
             load(config_file, 'config');
             try
-                h.Position = config.Position;
+                if ~keep_position
+                    h.Position = config.Position;
+                end
                 fs = config.fs;
             catch
-                % invalid config file
-                warning('config file is invalid; deleting');
-                delete(config_file);
+                warning('invalid config file');
             end
         end
+        write_config;
     end
 
-    function write_config()
+    function write_config
         disp('save config');
         config.Position = h.Position;
         config.fs = fs;
