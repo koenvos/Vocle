@@ -85,8 +85,8 @@ for k = 1:num_signals
     h_ax{k} = axes;
     h_ax{k}.Units = 'pixels';
 end
-time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, ...
-    'BackgroundColor', selection_color, 'Callback', @slider_moved_callback);
+time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color);
+slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
 text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', ...
     'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');
 text_segment = uicontrol(h, 'Style', 'text', 'FontName', 'Helvetica', ...
@@ -196,7 +196,7 @@ h.WindowButtonUpFcn = '';
     end
 
     % update axis
-    function set_time_range(range)
+    function set_time_range(range, update_slider)
         min_delta = 10 / fs;
         max_time = max(signal_lengths) / fs;
         time_range_view(1) = min(max(range(1), 0), max_time - min_delta);
@@ -205,17 +205,21 @@ h.WindowButtonUpFcn = '';
         % update signals
         plot_signals;
         % update slider
-        time_diff = diff(time_range_view);
-        val = (mean(time_range_view) - time_diff / 2 + 1e-6) / (max_time - time_diff + 2e-6);
-        time_slider.Value = min(max(val, 0), 1);
-        frac_time = time_diff / max_time;
-        if 1
-            % zooming out fully, the slider should take up the entire width; but it doesn't
-            time_slider.SliderStep = [0.25, 1] * frac_time;
-        else
-            % this fixes the width problem of the slider, but doesn't work
-            % reliably: sometimes the slider is in the wrong position
-            time_slider.SliderStep = [0.1, 1 / (1.0001 - frac_time)] * frac_time;
+        if nargin < 2 || update_slider
+            time_diff = diff(time_range_view);
+            val = (mean(time_range_view) - time_diff / 2 + 1e-6) / (max_time - time_diff + 2e-6);
+            slider_listener.Enabled = 0;
+            time_slider.Value = min(max(val, 0), 1);
+            slider_listener.Enabled = 1;
+            frac_time = time_diff / max_time;
+            if 1
+                % zooming out fully, the slider should take up the entire width; but it doesn't
+                time_slider.SliderStep = [0.1, 1] * frac_time;
+            else
+                % this fixes the width problem of the slider, but doesn't work
+                % reliably: sometimes the slider is in the wrong position
+                time_slider.SliderStep = [0.1, 1 / (1.0001 - frac_time)] * frac_time;
+            end
         end
     end
 
@@ -320,11 +324,11 @@ h.WindowButtonUpFcn = '';
     function window_scroll_callback(~, evt)
         zoom_axes(zoom_per_scroll_wheel_step ^ evt.VerticalScrollCount);
     end
-
+    
     function slider_moved_callback(~, ~)
         time_diff = diff(time_range_view);
         time_center = 0.5 * time_diff + time_slider.Value * (max(signal_lengths) / fs - time_diff);
-        set_time_range(time_center + time_diff * [-0.5, 0.5]);
+        set_time_range(time_center + time_diff * [-0.5, 0.5], 0);
     end
 
     function play(varargin)
