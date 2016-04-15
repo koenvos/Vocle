@@ -14,8 +14,10 @@ function vocle(varargin)
 % - play
 % - stop
 % - animated cursor
-% - y scaling of segment patch and cursor line when zooming
-% - show patch in all selected axes --> only change selection on button
+% - show patch in all selected axes 
+% - A/B test
+% - spectrum
+% - spectrogram
 
 % settings
 fig_no = 9372;
@@ -158,7 +160,7 @@ h.WindowButtonUpFcn = '';
             s = signals{kk};
             s_ = reduce(s(t0:t1, :));
             t = (t0 + (0:size(s_, 1)-1) * (t1-t0+1) / length(s_)) / fs;
-            plot(h_ax{kk}, t, s_, 'HitTest', 'off');
+            plot(h_ax{kk}, t, s_, 'ButtonDownFcn', @plot_button_down_callback);
             h_ax{kk}.UserData = kk;
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
             h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
@@ -248,21 +250,35 @@ h.WindowButtonUpFcn = '';
         end
     end
 
+    function plot_button_down_callback(~, ~)
+        src = gca;
+        if strcmp(h.SelectionType, 'normal')
+            n_axes = src.UserData;
+            t = get_mouse_pointer_time;
+            yval = interp1(1:signal_lengths(n_axes), signals{n_axes}, t * fs);
+            text_segment.String = num2str(yval, ' %.3g');
+            text_segment.Visible = 'on';
+            % the function below will set text_segment.Position
+        end
+        % pass through
+        axes_button_down_callback(gca, []);
+    end
+
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         disp(['button down on axes ', num2str(n_axes), '; type: ' h.SelectionType]);
         curr_time = get_mouse_pointer_time;
-        % deal with different types of mouse clicks
         delete_patches;
         zoom_range = segment_range;
         segment_range = [];
+        % deal with different types of mouse clicks
         switch(h.SelectionType)
             case 'normal'
                 % left mouse: select current axes; setup segment
                 update_selections(n_axes, 'unique');
                 segment_range = curr_time * [1, 1];
                 draw_patches;
-                text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 16, 80, 13];
+                text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                 % cursor_line = line([1, 1] * curr_time, ylim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
                 h.WindowButtonUpFcn = @button_up_callback;
                 h.WindowButtonMotionFcn = @button_motion_callback;
