@@ -9,11 +9,10 @@ function vocle(varargin)
 % - stop playback
 % - A/B test
 % - different sampling rates per sample?
+% - auto align function?
 
 % todo:
 % - play segment
-% - animated cursor
-% - show patch in all selected axes 
 % - A/B test
 % - spectrum
 % - spectrogram
@@ -24,14 +23,15 @@ config_file = [which('vocle'), 'at'];
 axes_label_font_size = 8;
 % space around and between axes
 left_margin = 42;
-right_margin = 20;
-bottom_margin = 90;
-top_margin = 16;
+right_margin = 18;
+bottom_margin = 100;
+top_margin = 14;
 vert_spacing = 27;
 slider_height = 16;
-figure_color = [0.915, 0.918, 0.92];
-selection_color = [0.943, 0.946, 0.95];
-segment_color = [0.88, 0.92, 0.96];
+button_height = 20;
+figure_color = [0.895, 0.898, 0.9];
+selection_color = [0.945, 0.948, 0.95];
+segment_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
 playback_fs = 48000;
@@ -88,6 +88,7 @@ time_range_view = [];
 last_button_down = [];
 segment_range = [];
 segment_patches = cell(num_signals, 1);
+play_cursor = [];
 player = [];
 
 % put elements on UI
@@ -100,13 +101,13 @@ end
 time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
 text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', ...
-    'FontName', 'Helvetica', 'BackgroundColor', figure_color, 'HitTest', 'Off');
+    'FontName', 'Helvetica', 'BackgroundColor', figure_color);
 text_segment = uicontrol(h, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
-play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'Enable', 'off', 'Callback', @play_callback);
 popup_fs = uicontrol(h, 'Style', 'popup', 'String', ...
     {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
 popup_fs.Value = find(str2double(popup_fs.String) == fs);
+play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 10, 'Callback', @play_callback);
 update_layout;
 
 % show signals
@@ -132,10 +133,11 @@ h.WindowButtonUpFcn = '';
                 h_ax{kk}.Position = [left_margin, bottom, width, height];
             end
         end
-        play_button.Position = [h_width/2-25, 12, 50, 22];
-        time_slider.Position = [left_margin-10, bottom_margin-vert_spacing-slider_height, width+20, slider_height];
-        popup_fs.Position = [h_width-70, 12, 58, 22];
-        text_fs.Position = [h_width-147, 9, 74, 22];
+        slider_bottom = bottom_margin - vert_spacing - slider_height;
+        time_slider.Position = [left_margin-10, slider_bottom, width+20, slider_height];
+        play_button.Position = [h_width/2-25, (slider_bottom-button_height)/2-3, 50, button_height+6];  % extra big
+        popup_fs.Position = [h_width-70, (slider_bottom-button_height)/2, 58, button_height];
+        text_fs.Position = [h_width-147, (slider_bottom-button_height)/2-4, 74, button_height];
     end
 
     function update_selections(ind, type)
@@ -246,14 +248,12 @@ h.WindowButtonUpFcn = '';
     function draw_patches
         if ~isempty(segment_range)
             for kk = 1:num_signals
-                if selected_axes(kk)
-                    if isempty(segment_patches{kk})                    
-                        segment_patches{kk} = patch(segment_range([1, 2, 2, 1]), signals_ylim(kk) * [-1, -1, 1, 1], ...
-                            segment_color, 'LineStyle', 'none', 'HitTest', 'off');
-                        uistack(segment_patches{kk}, 'bottom');
-                    else
-                        segment_patches{kk}.Vertices(:, 1) = segment_range([1, 2, 2, 1]);
-                    end
+                if isempty(segment_patches{kk})
+                    segment_patches{kk} = patch(segment_range([1, 2, 2, 1]), signals_ylim(kk) * [-1, -1, 1, 1], ...
+                        segment_color, 'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
+                    uistack(segment_patches{kk}, 'bottom');
+                else
+                    segment_patches{kk}.Vertices(:, 1) = segment_range([1, 2, 2, 1]);
                 end
             end
         end
@@ -263,8 +263,9 @@ h.WindowButtonUpFcn = '';
         src = gca;
         if strcmp(h.SelectionType, 'normal')
             n_axes = src.UserData;
-            t = get_mouse_pointer_time;
-            yval = interp1(1:signal_lengths(n_axes), signals{n_axes}, t * fs);
+            t = get_mouse_pointer_time * fs;
+            % linearly interpolate
+            yval = signals{n_axes}(floor(t) + [0; 1])' * ([1; 0] + [-1; 1] * (t - floor(t)));
             text_segment.String = num2str(yval, ' %.3g');
             text_segment.Visible = 'on';
             % the function below will set text_segment.Position
@@ -273,6 +274,14 @@ h.WindowButtonUpFcn = '';
         axes_button_down_callback(gca, []);
     end
 
+    % left mouse: select axes and unselect all others; remove highlight
+    % left mouse + drag: highlight segment
+    % right mouse:
+    % - zoom to highlighted segment; remove highlight
+    % - zoom out, if no highlight
+    % double click left: left mouse + zoom out full
+    % Ctrl + left: toggle selection of axes
+    % Shift + left: select axes and unselect all others; play window or highlighted segment
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         disp(['button down on axes ', num2str(n_axes), '; type: ' h.SelectionType]);
@@ -293,7 +302,7 @@ h.WindowButtonUpFcn = '';
                 h.WindowButtonMotionFcn = @button_motion_callback;
             case 'extend'
                 update_selections(n_axes, 'unique');
-                play_callback;
+                play_callback('force_start');
             case 'alt'
                 if strcmp(h.CurrentModifier, 'control')
                     % Ctrl + left mouse: toggle selection of current axes
@@ -319,7 +328,7 @@ h.WindowButtonUpFcn = '';
                         set_time_range([0, inf]);
                     case 'extend'
                         update_selections(n_axes, 'unique');
-                        play_callback;
+                        play_callback('force_start');
                     case 'alt'
                         % double click 'alt': treat as second of two separate clicks
                         if strcmp(h.CurrentModifier, 'control')
@@ -363,7 +372,7 @@ h.WindowButtonUpFcn = '';
         set_time_range(time_center + time_diff * [-0.5, 0.5], 0);
     end
 
-    function [s, t0 , t1] = get_current_signal(kk)
+    function [s, t0 , t1] = get_current_signal(kk, apply_win)
         s = signals{kk};
         if ~isempty(segment_range) && abs(diff(segment_range)) > 0
             t0 = min(segment_range);
@@ -374,23 +383,32 @@ h.WindowButtonUpFcn = '';
         end
         t0 = max(round(t0 * fs), 1);
         t1 = min(round(t1 * fs), signal_lengths(kk));
-        s = s(t0:t1, :) / signals_ylim(kk) * 10^(0.05*playback_dBov);
+        s = s(t0:t1, :);
         smpls = size(s, 1);
-        % windowing
-        fade_smpls = min(fs / 100, smpls / 2);
-        win = sin((1:fade_smpls)'/(fade_smpls+1)*pi/2) .^ 2;
-        t = 1:fade_smpls;
-        s(t, :) = bsxfun(@times, s(t, :), win);
-        s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
+        if nargin > 1 && apply_win
+            % windowing
+            fade_smpls = min(fs / 100, smpls / 2);
+            win = sin((1:fade_smpls)'/(fade_smpls+1)*pi/2) .^ 2;
+            t = 1:fade_smpls;
+            s(t, :) = bsxfun(@times, s(t, :), win);
+            s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
+        end
         t0 = t0 / fs;
         t1 = t1 / fs;
     end
 
     function play_callback(varargin)
-        if strcmp(play_button.String, 'Play')
+        if strcmp(play_button.String, 'Play') || (ischar(varargin{1}) && strcmp(varargin{1}, 'force_start'))
+            % stop any ongoing playback before starting a new one
+            try 
+                stop(player);
+                delete(play_cursor);
+            catch
+            end
             kk = find(selected_axes, 1);
-            [s, t0, t1] = get_current_signal(kk);
-            s = resample([zeros(round(fs/50), size(s, 2)); s; zeros(round(fs/50), size(s, 2))], playback_fs, fs, 50);
+            [s, t0, t1] = get_current_signal(kk, 1);
+            s = s / (signals_ylim(kk) / ylim_margin) * 10^(0.05*playback_dBov);
+            s = resample([zeros(round(fs/100), size(s, 2)); s; zeros(round(fs/100), size(s, 2))], playback_fs, fs, 50);
             s = min(max(s, -1), 1);
             player = audioplayer(s, playback_fs, playback_bits);
             play(player);
@@ -398,26 +416,30 @@ h.WindowButtonUpFcn = '';
             pause(0.05);
             tval = tic;
             while t0 + toc(tval) < t1 && strcmp(play_button.String, 'Stop')
-                if exist('cursor_line', 'var') && isvalid(cursor_line)
+                if ~isempty(play_cursor) && isvalid(play_cursor)
                     % race condition: plot() could be called here through a callback, deleting the line
                     try
-                        cursor_line.XData = [1, 1] * (t0 + toc(tval));
+                        play_cursor.XData = [1, 1] * (t0 + toc(tval));
                     catch
                     end
                 else
-                    cursor_line = line([1, 1] * (t0 + toc(tval)), signals_ylim(kk) * [-1, 1], 'Color', 'k', 'HitTest', 'off');
+                    play_cursor = line([1, 1] * (t0 + toc(tval)), signals_ylim(kk) * [-1, 1], 'Color', 'k', 'HitTest', 'off');
                 end
                 pause(0.01);
             end
             try
-                delete(cursor_line);
+                delete(play_cursor);
             catch
             end
             play_button.String = 'Play';
         else
-            stop(player);
+            try 
+                stop(player);
+            catch
+            end
             play_button.String = 'Play';
         end
+        % make sure to leave the Play button in the right state
         update_selections([], '');
     end
 
