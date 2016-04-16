@@ -22,7 +22,7 @@ function vocle(varargin)
 fig_no = 9372;
 config_file = [which('vocle'), 'at'];
 axes_label_font_size = 8;
-% axes
+% space around and between axes
 left_margin = 42;
 right_margin = 20;
 bottom_margin = 90;
@@ -30,7 +30,7 @@ top_margin = 16;
 vert_spacing = 27;
 slider_height = 16;
 figure_color = [0.915, 0.918, 0.92];
-selection_color = [0.945, 0.946, 0.95];
+selection_color = [0.943, 0.946, 0.95];
 segment_color = [0.88, 0.92, 0.96];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
@@ -152,11 +152,10 @@ h.WindowButtonUpFcn = '';
         end
         if sum(selected_axes) == 1
             play_button.Enable = 'on';
-        else
+        elseif strcmp(play_button.String, 'Play')  % don't disable during playback
             play_button.Enable = 'off';
         end
         for kk = 1:num_signals
-            h_ax{kk}.LineWidth = 0.5;
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
         end
     end
@@ -357,45 +356,69 @@ h.WindowButtonUpFcn = '';
     function window_scroll_callback(~, evt)
         zoom_axes(zoom_per_scroll_wheel_step ^ evt.VerticalScrollCount);
     end
-    
+
     function slider_moved_callback(~, ~)
         time_diff = diff(time_range_view);
         time_center = 0.5 * time_diff + time_slider.Value * (max(signal_lengths) / fs - time_diff);
         set_time_range(time_center + time_diff * [-0.5, 0.5], 0);
     end
 
+    function [s, t0 , t1] = get_current_signal(kk)
+        s = signals{kk};
+        if ~isempty(segment_range) && abs(diff(segment_range)) > 0
+            t0 = min(segment_range);
+            t1 = max(segment_range);
+        else
+            t0 = time_range_view(1);
+            t1 = time_range_view(2);
+        end
+        t0 = max(round(t0 * fs), 1);
+        t1 = min(round(t1 * fs), signal_lengths(kk));
+        s = s(t0:t1, :) / signals_ylim(kk) * 10^(0.05*playback_dBov);
+        smpls = size(s, 1);
+        % windowing
+        fade_smpls = min(fs / 100, smpls / 2);
+        win = sin((1:fade_smpls)'/(fade_smpls+1)*pi/2) .^ 2;
+        t = 1:fade_smpls;
+        s(t, :) = bsxfun(@times, s(t, :), win);
+        s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
+        t0 = t0 / fs;
+        t1 = t1 / fs;
+    end
+
     function play_callback(varargin)
         if strcmp(play_button.String, 'Play')
-            n_axes = find(selected_axes, 1);
-            s = signals{n_axes};
-            if ~isempty(segment_range) && abs(diff(segment_range)) > 0
-                t0 = min(segment_range);
-                t1 = max(segment_range);
-            else
-                t0 = time_range_view(1);
-                t1 = time_range_view(2);
-            end
-            t0 = max(round(t0 * fs), 1);
-            t1 = min(round(t1 * fs), signal_lengths(n_axes));
-            s = s(t0:t1, :) / signals_ylim(n_axes) * 10^(0.05*playback_dBov);
-            [smpls, nchan] = size(s);
-            % smooth fade in/out
-            fade_smpls = fs / 100;
-            if smpls > 2 * fade_smpls
-                win = sin((1:fade_smpls)'/(fade_smpls+1)*pi/2) .^ 2;
-                t = 1:fade_smpls;
-                s(t, :) = bsxfun(@times, s(t, :), win);
-                s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
-            end
-            s = resample([zeros(round(fs/50), nchan); s; zeros(round(fs/50), nchan)], playback_fs, fs);
+            kk = find(selected_axes, 1);
+            [s, t0, t1] = get_current_signal(kk);
+            s = resample([zeros(round(fs/50), size(s, 2)); s; zeros(round(fs/50), size(s, 2))], playback_fs, fs, 50);
             s = min(max(s, -1), 1);
             player = audioplayer(s, playback_fs, playback_bits);
             play(player);
             play_button.String = 'Stop';
+            pause(0.05);
+            tval = tic;
+            while t0 + toc(tval) < t1 && strcmp(play_button.String, 'Stop')
+                if exist('cursor_line', 'var') && isvalid(cursor_line)
+                    % race condition: plot() could be called here through a callback, deleting the line
+                    try
+                        cursor_line.XData = [1, 1] * (t0 + toc(tval));
+                    catch
+                    end
+                else
+                    cursor_line = line([1, 1] * (t0 + toc(tval)), signals_ylim(kk) * [-1, 1], 'Color', 'k', 'HitTest', 'off');
+                end
+                pause(0.01);
+            end
+            try
+                delete(cursor_line);
+            catch
+            end
+            play_button.String = 'Play';
         else
             stop(player);
             play_button.String = 'Play';
         end
+        update_selections([], '');
     end
 
     function window_button_down_callback(~, ~)
@@ -451,7 +474,7 @@ end
 
 % took this from spclab:
 function out = reduce(x)
-N=1e4;
+N = 1e4;
 [L, chans] = size(x);
 if length(x) > 4*N
     d = ceil(L/N);
