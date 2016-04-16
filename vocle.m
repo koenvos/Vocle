@@ -12,7 +12,6 @@ function vocle(varargin)
 % - auto align function?
 
 % todo:
-% - play segment
 % - A/B test
 % - spectrum
 % - spectrogram
@@ -29,8 +28,8 @@ top_margin = 14;
 vert_spacing = 27;
 slider_height = 16;
 button_height = 20;
-figure_color = [0.895, 0.898, 0.9];
-selection_color = [0.945, 0.948, 0.95];
+figure_color = [0.9, 0.9, 0.9];
+selection_color = [0.95, 0.95, 0.95];
 segment_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
@@ -86,8 +85,8 @@ h_ax = [];
 selected_axes = [];
 time_range_view = [];
 last_button_down = [];
-segment_range = [];
-segment_patches = cell(num_signals, 1);
+highlight_range = [];
+highlight_patches = cell(num_signals, 1);
 play_cursor = [];
 player = [];
 
@@ -164,7 +163,8 @@ h.WindowButtonUpFcn = '';
 
     % plot signals
     function plot_signals
-        delete_patches;   % they wouldn't survive the plotting
+        tmp_range = highlight_range;
+        delete_highlights;   % they wouldn't survive the plotting
         for kk = 1:num_signals
             t0 = max(floor(time_range_view(1)*fs), 1);
             t1 = min(ceil(time_range_view(2)*fs), signal_lengths(kk));
@@ -187,7 +187,8 @@ h.WindowButtonUpFcn = '';
             h_ax{kk}.XLim = time_range_view;
             h_ax{kk}.YLim = [miny, maxy];
         end
-        draw_patches;
+        highlight_range = tmp_range;
+        draw_highlights;
     end
 
     function t = get_mouse_pointer_time
@@ -236,39 +237,39 @@ h.WindowButtonUpFcn = '';
         end
     end
 
-    function delete_patches
+    function delete_highlights
         for kk = 1:num_signals
-            if ~isempty(segment_patches{kk})
-                delete(segment_patches{kk});
-                segment_patches{kk} = [];
+            if ~isempty(highlight_patches{kk})
+                delete(highlight_patches{kk});
+                highlight_patches{kk} = [];
             end
         end
+        highlight_range = [];
     end
 
-    function draw_patches
-        if ~isempty(segment_range)
+    function draw_highlights
+        if ~isempty(highlight_range)
             for kk = 1:num_signals
-                if isempty(segment_patches{kk})
-                    segment_patches{kk} = patch(segment_range([1, 2, 2, 1]), signals_ylim(kk) * [-1, -1, 1, 1], ...
+                if isempty(highlight_patches{kk})
+                    highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), signals_ylim(kk) * [-1, -1, 1, 1], ...
                         segment_color, 'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
-                    uistack(segment_patches{kk}, 'bottom');
+                    uistack(highlight_patches{kk}, 'bottom');
                 else
-                    segment_patches{kk}.Vertices(:, 1) = segment_range([1, 2, 2, 1]);
+                    highlight_patches{kk}.Vertices(:, 1) = highlight_range([1, 2, 2, 1]);
                 end
             end
         end
     end
 
     function plot_button_down_callback(~, ~)
-        src = gca;
         if strcmp(h.SelectionType, 'normal')
-            n_axes = src.UserData;
+            kk = get(gca, 'UserData');
             t = get_mouse_pointer_time * fs;
             % linearly interpolate
-            yval = signals{n_axes}(floor(t) + [0; 1])' * ([1; 0] + [-1; 1] * (t - floor(t)));
+            yval = ([1, 0] + [-1, 1] * (t - floor(t))) * signals{kk}(floor(t) + [0; 1], :);
             text_segment.String = num2str(yval, ' %.3g');
             text_segment.Visible = 'on';
-            % the function below will set text_segment.Position
+            % the function called next will set text_segment.Position
         end
         % pass through to next function
         axes_button_down_callback(gca, []);
@@ -282,26 +283,23 @@ h.WindowButtonUpFcn = '';
     % double click left: left mouse + zoom out full
     % Ctrl + left: toggle selection of axes
     % Shift + left: select axes and unselect all others; play window or highlighted segment
+    last_clicked_axes = [];
+    last_action_was_highlight = 0;
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         disp(['button down on axes ', num2str(n_axes), '; type: ' h.SelectionType]);
         curr_time = get_mouse_pointer_time;
-        delete_patches;
-        zoom_range = segment_range;
-        segment_range = [];
         % deal with different types of mouse clicks
         switch(h.SelectionType)
             case 'normal'
                 % left mouse: select current axes; setup segment
-                update_selections(n_axes, 'unique');
-                segment_range = curr_time * [1, 1];
-                draw_patches;
+                delete_highlights;
+                highlight_range = curr_time * [1, 1];
                 text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
-                % cursor_line = line([1, 1] * curr_time, ylim, 'Color', 'k', 'LineStyle', '--', 'HitTest', 'off');
                 h.WindowButtonUpFcn = @button_up_callback;
                 h.WindowButtonMotionFcn = @button_motion_callback;
             case 'extend'
-                update_selections(n_axes, 'unique');
+                %update_selections(n_axes, 'unique');
                 play_callback('force_start');
             case 'alt'
                 if strcmp(h.CurrentModifier, 'control')
@@ -309,15 +307,13 @@ h.WindowButtonUpFcn = '';
                     update_selections(n_axes, 'toggle');
                 else
                     % right mouse
-                    selected_axes(:) = 0;
-                    selected_axes(n_axes) = 1;
-                    update_selections(n_axes, 'unique');
-                    if ~exist('zoom_range', 'var') || isempty(zoom_range) || diff(zoom_range) == 0
+                    if isempty(highlight_range) || diff(highlight_range) == 0
                         % zoom out 2x
                         zoom_axes(2);
                     else
                         % zoom to segment
-                        set_time_range(sort(zoom_range));
+                        set_time_range(sort(highlight_range));
+                        delete_highlights;
                     end
                 end
             case 'open'
@@ -327,7 +323,6 @@ h.WindowButtonUpFcn = '';
                         % double click left: zoom out full
                         set_time_range([0, inf]);
                     case 'extend'
-                        update_selections(n_axes, 'unique');
                         play_callback('force_start');
                     case 'alt'
                         % double click 'alt': treat as second of two separate clicks
@@ -341,17 +336,22 @@ h.WindowButtonUpFcn = '';
                 end
         end
         last_button_down = h.SelectionType;
+        last_clicked_axes = n_axes;
     end
 
     function button_up_callback(~, ~)
         h.WindowButtonUpFcn = '';
         h.WindowButtonMotionFcn = '';
         text_segment.Visible = 'off';
+        if last_action_was_highlight == 0
+            update_selections(last_clicked_axes, 'unique');
+        end
+        last_action_was_highlight = 0;
     end
 
     function button_motion_callback(~, ~)
-        segment_range(2) = get_mouse_pointer_time;
-        delta = abs(diff(segment_range));
+        highlight_range(2) = get_mouse_pointer_time;
+        delta = abs(diff(highlight_range));
         if delta < 1
             str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(round(delta * fs)), ')'];
         else
@@ -359,7 +359,8 @@ h.WindowButtonUpFcn = '';
         end
         text_segment.String = str;
         text_segment.Visible = 'on';
-        draw_patches;
+        draw_highlights;
+        last_action_was_highlight = 1;
     end
 
     function window_scroll_callback(~, evt)
@@ -372,11 +373,11 @@ h.WindowButtonUpFcn = '';
         set_time_range(time_center + time_diff * [-0.5, 0.5], 0);
     end
 
-    function [s, t0 , t1] = get_current_signal(kk, apply_win)
+    function [s, t0, t1] = get_current_signal(kk, apply_win)
         s = signals{kk};
-        if ~isempty(segment_range) && abs(diff(segment_range)) > 0
-            t0 = min(segment_range);
-            t1 = max(segment_range);
+        if ~isempty(highlight_range) && abs(diff(highlight_range)) > 0
+            t0 = min(highlight_range);
+            t1 = max(highlight_range);
         else
             t0 = time_range_view(1);
             t1 = time_range_view(2);
@@ -405,14 +406,14 @@ h.WindowButtonUpFcn = '';
                 delete(play_cursor);
             catch
             end
-            kk = find(selected_axes, 1);
+            kk = get(gca, 'UserData');
             [s, t0, t1] = get_current_signal(kk, 1);
             s = s / (signals_ylim(kk) / ylim_margin) * 10^(0.05*playback_dBov);
             s = resample([zeros(round(fs/100), size(s, 2)); s; zeros(round(fs/100), size(s, 2))], playback_fs, fs, 50);
-            s = min(max(s, -1), 1);
             player = audioplayer(s, playback_fs, playback_bits);
             play(player);
             play_button.String = 'Stop';
+            play_button.Enable = 'on';
             pause(0.05);
             tval = tic;
             while t0 + toc(tval) < t1 && strcmp(play_button.String, 'Stop')
@@ -446,15 +447,15 @@ h.WindowButtonUpFcn = '';
     function window_button_down_callback(~, ~)
         % mouse click outside axes
         update_selections([], 'reset');
-        delete_patches;
-        segment_range = [];
+        delete_highlights;
+        highlight_range = [];
     end
 
     function change_fs_callback(src, ~)
         fs_old = fs;
         fs = str2double(src.String{src.Value});
         write_config();
-        segment_range = segment_range * fs_old / fs;
+        highlight_range = highlight_range * fs_old / fs;
         set_time_range(time_range_view * fs_old / fs);
     end
 
