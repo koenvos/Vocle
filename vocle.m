@@ -3,18 +3,17 @@ function vocle(varargin)
 % 
 % same basic interaction as spclab
 % advantages over spclab:
-% - save configuration such as window location, samping rate between calls to vocle
+% - save configuration such as window location and sampling rate between calls to vocle
 % - scroll wheel zooming
 % - stereo support
 % - stop playback
 % - A/B test
-% - different sampling rates per sample?
 % - auto align function?
 
 % todo:
-% - A/B test
 % - spectrum
 % - spectrogram
+% - save to workspace / file
 
 % settings
 fig_no = 9372;
@@ -84,11 +83,15 @@ end
 h_ax = [];
 selected_axes = [];
 time_range_view = [];
-last_button_down = [];
+last_button_down = '';
 highlight_range = [];
 highlight_patches = cell(num_signals, 1);
 play_cursor = [];
 player = [];
+isplaying = 0;
+play_src = [];
+play_start_time = [];
+player_prev_smpl = 0;
 
 % put elements on UI
 clf;
@@ -106,7 +109,7 @@ text_segment = uicontrol(h, 'Style', 'text', 'FontName', 'Helvetica', ...
 popup_fs = uicontrol(h, 'Style', 'popup', 'String', ...
     {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
 popup_fs.Value = find(str2double(popup_fs.String) == fs);
-play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 10, 'Callback', @play_callback);
+play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 10, 'Callback', @start_play);
 update_layout;
 
 % show signals
@@ -151,13 +154,21 @@ h.WindowButtonUpFcn = '';
                     selected_axes(ind) = 1 - selected_axes(ind);
             end
         end
-        if sum(selected_axes) == 1
-            play_button.Enable = 'on';
-        elseif strcmp(play_button.String, 'Play')  % don't disable during playback
-            play_button.Enable = 'off';
-        end
         for kk = 1:num_signals
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
+        end
+        if isplaying  % don't disable during playback
+            play_button.String = 'Stop';
+            play_button.Enable = 'on';
+        elseif sum(selected_axes) == 1
+            play_button.String = 'Play';
+            play_button.Enable = 'on';
+        elseif sum(selected_axes) == 2
+            play_button.String = 'A/B';
+            play_button.Enable = 'on';
+        else
+            play_button.String = 'Play';
+            play_button.Enable = 'off';
         end
     end
 
@@ -282,25 +293,24 @@ h.WindowButtonUpFcn = '';
     % - zoom out, if no highlight
     % double click left: left mouse + zoom out full
     % Ctrl + left: toggle selection of axes
-    % Shift + left: select axes and unselect all others; play window or highlighted segment
+    % Shift + left: play window or highlighted segment
     last_clicked_axes = [];
     last_action_was_highlight = 0;
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
-        disp(['button down on axes ', num2str(n_axes), '; type: ' h.SelectionType]);
-        curr_time = get_mouse_pointer_time;
+        disp(['mouse click on axes ', num2str(n_axes), ', type: ' h.SelectionType, ', previous: ', last_button_down]);
         % deal with different types of mouse clicks
         switch(h.SelectionType)
             case 'normal'
                 % left mouse: select current axes; setup segment
                 delete_highlights;
-                highlight_range = curr_time * [1, 1];
+                highlight_range = get_mouse_pointer_time * [1, 1];
                 text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                 h.WindowButtonUpFcn = @button_up_callback;
                 h.WindowButtonMotionFcn = @button_motion_callback;
             case 'extend'
-                %update_selections(n_axes, 'unique');
-                play_callback('force_start');
+                play_src = n_axes;
+                start_play;
             case 'alt'
                 if strcmp(h.CurrentModifier, 'control')
                     % Ctrl + left mouse: toggle selection of current axes
@@ -323,7 +333,8 @@ h.WindowButtonUpFcn = '';
                         % double click left: zoom out full
                         set_time_range([0, inf]);
                     case 'extend'
-                        play_callback('force_start');
+                        play_src = n_axes;
+                        start_play;
                     case 'alt'
                         % double click 'alt': treat as second of two separate clicks
                         if strcmp(h.CurrentModifier, 'control')
@@ -335,7 +346,9 @@ h.WindowButtonUpFcn = '';
                         end
                 end
         end
-        last_button_down = h.SelectionType;
+        if ~strcmp(h.SelectionType, 'open')
+            last_button_down = h.SelectionType;
+        end
         last_clicked_axes = n_axes;
     end
 
@@ -373,7 +386,7 @@ h.WindowButtonUpFcn = '';
         set_time_range(time_center + time_diff * [-0.5, 0.5], 0);
     end
 
-    function [s, t0, t1] = get_current_signal(kk, apply_win)
+    function [s, t0] = get_current_signal(kk, apply_win)
         s = signals{kk};
         if ~isempty(highlight_range) && abs(diff(highlight_range)) > 0
             t0 = min(highlight_range);
@@ -395,53 +408,78 @@ h.WindowButtonUpFcn = '';
             s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
         end
         t0 = t0 / fs;
-        t1 = t1 / fs;
     end
 
-    function play_callback(varargin)
-        if strcmp(play_button.String, 'Play') || (ischar(varargin{1}) && strcmp(varargin{1}, 'force_start'))
-            % stop any ongoing playback before starting a new one
-            try 
-                stop(player);
-                delete(play_cursor);
-            catch
-            end
-            kk = get(gca, 'UserData');
-            [s, t0, t1] = get_current_signal(kk, 1);
-            s = s / (signals_ylim(kk) / ylim_margin) * 10^(0.05*playback_dBov);
-            s = resample([zeros(round(fs/100), size(s, 2)); s; zeros(round(fs/100), size(s, 2))], playback_fs, fs, 50);
-            player = audioplayer(s, playback_fs, playback_bits);
-            play(player);
-            play_button.String = 'Stop';
-            play_button.Enable = 'on';
-            pause(0.05);
-            tval = tic;
-            while t0 + toc(tval) < t1 && strcmp(play_button.String, 'Stop')
-                if ~isempty(play_cursor) && isvalid(play_cursor)
-                    % race condition: plot() could be called here through a callback, deleting the line
-                    try
-                        play_cursor.XData = [1, 1] * (t0 + toc(tval));
-                    catch
-                    end
-                else
-                    play_cursor = line([1, 1] * (t0 + toc(tval)), signals_ylim(kk) * [-1, 1], 'Color', 'k', 'HitTest', 'off');
-                end
-                pause(0.01);
-            end
-            try
-                delete(play_cursor);
-            catch
-            end
-            play_button.String = 'Play';
-        else
-            try 
-                stop(player);
-            catch
-            end
-            play_button.String = 'Play';
+    function start_play(varargin)
+        % stop any ongoing playback before starting a new one
+        if ~isempty(player)
+            player.StopFcn = '';  % prevent that stop_play resets play_src
+            stop(player);
+            delete(play_cursor);
         end
-        % make sure to leave the Play button in the right state
+        if isempty(play_src)
+            play_src = find(selected_axes);
+        end
+        isplaying = 1;
+        play_button.String = 'Stop';
+        play_button.Enable = 'on';
+        play_button.Callback = @stop_play;
+        if length(play_src) == 1
+            % playback from a single axes
+            [s, play_start_time] = get_current_signal(play_src, 1);
+            s = s / (signals_ylim(play_src) / ylim_margin) * 10^(0.05*playback_dBov);
+            s = resample(s, playback_fs, fs, 50);
+            player = audioplayer(s, playback_fs, playback_bits);
+            player.StopFcn = @stop_play;
+            player.TimerFcn = @draw_play_cursor;
+            player.TimerPeriod = 0.02;
+            play_cursor = line([1, 1] * play_start_time, [-1, 1] * signals_ylim(play_src), ...
+                'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
+            player_prev_smpl = 0;
+            play(player);
+        elseif length(play_src) == 2
+            % A/B test
+            play_src = play_src(randperm(2));
+            ss = [];
+            for i = 1:2
+                s = get_current_signal(play_src(i), 1);
+                s = s / (signals_ylim(play_src(i)) / ylim_margin) * 10^(0.05*playback_dBov);
+                ss = [ss; repmat(s, [1, 3 - size(s, 2)])];
+            end
+            ss = resample(ss, playback_fs, fs, 50);
+            player = audioplayer(ss, playback_fs, playback_bits);
+            player.StopFcn = @stop_play;
+            play(player);
+        end
+    end
+        
+    function stop_play(varargin)
+        stop(player);
+        delete(play_cursor);
+        play_button.Callback = @start_play;
+        isplaying = 0;
+        if length(play_src) == 2
+            if play_src(1) > play_src(2)
+                disp('Playout order: bottom, top');
+            else
+                disp('Playout order: top, bottom');
+            end
+        end
+        play_src = [];
         update_selections([], '');
+    end
+
+
+    function draw_play_cursor(varargin)
+        delete(play_cursor);
+        % the player sometimes ends with CurrentSample = 1
+        if player.CurrentSample < player_prev_smpl
+            return;
+        end
+        player_prev_smpl = player.CurrentSample;
+        t = play_start_time + (player.CurrentSample - 1) / playback_fs;
+        play_cursor = line([1, 1] * t, [-1, 1] * signals_ylim(play_src), ...
+            'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
     end
 
     function window_button_down_callback(~, ~)
@@ -460,7 +498,6 @@ h.WindowButtonUpFcn = '';
     end
 
     function window_resize_callback(~, ~)
-        write_config();
         update_layout();
     end
 
