@@ -35,7 +35,7 @@ slider_height = 16;
 button_height = 20;
 figure_color = [0.92, 0.92, 0.92];
 selection_color = [0.95, 0.95, 0.95];
-segment_color = [0.7, 0.8, 0.9];
+highlight_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
 playback_fs = 48000;
@@ -43,7 +43,7 @@ playback_bits = 24;
 playback_dBov = -3;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
-verbose = 1;
+verbose = 0;
 
 % function-wide variables
 h_ax = [];
@@ -429,7 +429,7 @@ h.WindowButtonUpFcn = '';
             for kk = 1:num_signals
                 if isempty(highlight_patches{kk})
                     highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), signals_ylim(kk) * [-1, -1, 1, 1], ...
-                        segment_color, 'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
+                        highlight_color, 'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
                     uistack(highlight_patches{kk}, 'bottom');
                 else
                     highlight_patches{kk}.Vertices(:, 1) = highlight_range([1, 2, 2, 1]);
