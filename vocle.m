@@ -36,7 +36,7 @@ config_file = [which('vocle'), 'at'];
 axes_label_font_size = 8;
 % space around and between axes
 left_margin = 42;
-right_margin = 18;
+right_margin = 22;
 bottom_margin = 84;
 top_margin = 13;
 vert_spacing = 30;
@@ -53,7 +53,7 @@ playback_bits = 24;
 playback_dBov = -2;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
-verbose = 0 ;
+verbose = 0;
 
 % function-wide variables
 h_ax = [];
@@ -87,13 +87,13 @@ h_fig.Color = figure_color;
 h_fig.ToolBar = 'none';
 h_fig.MenuBar = 'none';
 h_save = uimenu(h_fig, 'Label', 'Save', 'Callback', @save_file_callback);
+h_spec_menu = uimenu(h_fig, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
+h_specgram_menu = uimenu(h_fig, 'Label', 'Spectrogram', 'Callback', @spectrogram_callback);
+h_specgram_menu.Enable = 'off';
 h_fs = uimenu(h_fig, 'Label', 'Sampling Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
 end
-h_spec_menu = uimenu(h_fig, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
-h_specgram_menu = uimenu(h_fig, 'Label', 'Spectrogram', 'Callback', @spectrogram_callback);
-h_specgram_menu.Enable = 'off';
 
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
@@ -164,7 +164,7 @@ text_segment = uicontrol(h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
 time_slider = uicontrol(h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
-play_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 10, 'Callback', @start_play);
+play_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
 update_layout;
 
 % show signals
@@ -308,19 +308,15 @@ h_fig.WindowButtonUpFcn = '';
         spectrum_update(1);
     end
 
-    function spectrogram_callback(varargin)
-        disp('spectrogram is not yet implemented..');
-    end
-
     % compute and display spectra
     function spectrum_update(focus_back_to_main)
         if ishandle(h_spectrum)
+            figure(spectrum_no);
             clf(h_spectrum);
             kk = find(selected_axes);
             if isempty(kk)
                 return;
             end
-            ax = axes('Parent', h_spectrum);
             s = [];
             legend_str = {};
             for i = 1:length(kk)
@@ -338,6 +334,9 @@ h_fig.WindowButtonUpFcn = '';
                     end
                 end
             end
+            if isempty(s)
+                return;
+            end
             nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
             d = floor(spectrum_sampling_Hz / (config.fs / nfft));
             j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
@@ -347,16 +346,18 @@ h_fig.WindowButtonUpFcn = '';
             % circular convolution
             fx = ifft(bsxfun(@times, fft(fx), fft(w, nfft)));
             fx = fx(j:d:nfft/2+j, :);
-            fx = max(fx, max(fx(:)) * 1e-20);
+            fx = max(fx, 1e-100);
             fx = 10*log10(fx);
             f = (0:size(fx, 1)-1) * d * config.fs / nfft;
+            ax = axes('Parent', h_spectrum);
             plot(ax, f/1e3, fx);
             f_ = sort(fx(:));
             v = f_(ceil(length(f_)/200));  % 0.5 percentile
-            axis(ax, [0, config.fs/2e3, v, f_(end) + (f_(end)-v) * 0.05]);
+            axis(ax, [0, config.fs/2e3, v, f_(end) + (f_(end)-v) * 0.05 + 1e-12]);
             ax.Position = [0.1, 0.13, 0.87, 0.84];
             xlabel(ax, 'kHz');
             ylabel(ax, 'dB');
+            ax.FontSize = 9;
             grid(ax, 'on');
             zoom(h_spectrum, 'on');
             if length(legend_str) > 1
@@ -366,6 +367,10 @@ h_fig.WindowButtonUpFcn = '';
                 figure(fig_no);
             end
         end
+    end
+
+    function spectrogram_callback(varargin)
+        disp('spectrogram is not yet implemented..');
     end
 
     function [s, t0] = get_current_signal(kk, win_len)
@@ -497,7 +502,7 @@ h_fig.WindowButtonUpFcn = '';
             slider_listener.Enabled = 1;
             frac_time = time_diff / max_time;
             if 1
-                % zooming out fully, the slider should take up the entire width; but it doesn't
+                % zooming out fully, the slider should take up the entire width; it doesn't
                 time_slider.SliderStep = [0.1, 1] * frac_time;
             else
                 % this fixes the width problem of the slider, but doesn't work
@@ -679,6 +684,7 @@ h_fig.WindowButtonUpFcn = '';
         write_config();
         highlight_range = highlight_range * fs_old / config.fs;
         set_time_range(time_range_view * fs_old / config.fs, 1);
+        spectrum_update(0);
     end
 
     function window_resize_callback(~, ~)
