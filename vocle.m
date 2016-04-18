@@ -53,7 +53,7 @@ playback_bits = 24;
 playback_dBov = -2;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
-verbose = 1;
+verbose = 0 ;
 
 % function-wide variables
 h_ax = [];
