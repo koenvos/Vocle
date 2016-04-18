@@ -11,10 +11,10 @@ function vocle(varargin)
 % - A/B test
 
 % todo:
-% - files as input arguments
 % - spectrogram
 % - save to workspace / file
 % - option to show spectrum on a perceptual frequency scale?
+%   --> do smoothing on warped scale
 % - remember selection, zoom and highlight if main window was already open?
 % - "keep" option to store a signal and add it to the next call to vocle?
 %   --> show in a different color
@@ -39,9 +39,10 @@ selection_color = [0.95, 0.95, 0.95];
 highlight_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
+default_fs = 48000;
 playback_fs = 48000;
 playback_bits = 24;
-playback_dBov = -3;
+playback_dBov = -2;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
 verbose = 1;
@@ -49,7 +50,6 @@ verbose = 1;
 % function-wide variables
 h_ax = [];
 h_spectrum = [];
-spectrum_ax = [];
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
@@ -78,33 +78,63 @@ h.MenuBar = 'none';
 h.Name = ' Vocle';
 h.Color = figure_color;
 
+% process inputs
 % check if first argument is sampling rate, otherwise use the config value
+first_arg_fs = 0;
 if isscalar(varargin{1})
     config.fs = varargin{1};
+    first_arg_fs = 1;
 elseif ~isfield(config, 'fs')
-    config.fs = 48000;
+    config.fs = default_fs;
 end
-write_config;
-
-% process signals
-num_signals = length(varargin);
+num_signals = length(varargin) - first_arg_fs;
+highlight_patches = cell(num_signals, 1);
 signals = cell(num_signals, 1);
 signal_lengths = zeros(num_signals, 1);
 signals_negative = zeros(num_signals, 1);
 signals_ylim = zeros(num_signals, 1);
+file_fs = zeros(num_signals, 1);
 for k = 1:num_signals
-    sz = size(varargin{k});
-    signal_lengths(k) = max(sz);
-    if sz(1) > sz(2)
-        signals{k} = varargin{k};
+    arg = varargin{k+first_arg_fs};
+    if ischar(arg)
+        % file name
+        if ~exist(arg, 'file')
+            error(['  file not found: ', varargin{k}]);
+        else
+            try
+                [signals{k}, file_fs(k)] = audioread(arg);
+            catch
+                % read as shorts without header
+                fid = fopen(arg, 'rb');
+                signals{k} = fread(fid, inf, 'short') / 32768;
+                fclose(fid);
+            end
+        end
     else
-        signals{k} = varargin{k}';
+        sz = size(arg);
+        if sz(1) > sz(2)
+            signals{k} = arg;
+        else
+            signals{k} = arg';
+        end
     end
+end
+if sum(file_fs)
+    config.fs = max(max(file_fs), first_arg_fs * config.fs);
+end
+for k = 1:num_signals
+    if file_fs(k)
+        % upsample to highest sampling rate
+        signals{k} = resample(signals{k}, config.fs, file_fs(k));
+    elseif first_arg_fs
+        signals{k} = resample(signals{k}, config.fs, varargin{1});
+    end
+    signal_lengths(k) = size(signals{k}, 1);
     s_ = signals{k}(:);
     signals_negative(k) = min(s_) < 0;
     signals_ylim(k) = ylim_margin * max(abs(s_));
 end
-highlight_patches = cell(num_signals, 1);
+write_config;
 
 % put elements on UI
 clf;
@@ -151,7 +181,7 @@ h.WindowButtonUpFcn = '';
         end
         slider_bottom = bottom_margin - vert_spacing - slider_height;
         time_slider.Position = [left_margin-10, slider_bottom, width+20, slider_height];
-        text_fs.Position = [h_width-right_margin-58-74, (slider_bottom-button_height)/2-4, 74, button_height];
+        text_fs.Position = [h_width-right_margin-58-78, (slider_bottom-button_height)/2-3, 78, button_height];
         popup_fs.Position = [h_width-right_margin-58, (slider_bottom-button_height)/2, 58, button_height];
         spectrum_button.Position = [left_margin, (slider_bottom-button_height)/2, 60, button_height];
         play_button.Position = [h_width/2-25, (slider_bottom-button_height)/2-3, 50, button_height+6];  % extra big
@@ -241,33 +271,33 @@ h.WindowButtonUpFcn = '';
         h_spectrum.ToolBar = 'figure';
         h_spectrum.Name = ' Vocle Spectrum';
         h_spectrum.Color = figure_color;
-        if isempty(spectrum_ax) || ~ishandle(spectrum_ax)
-            spectrum_ax = axes;
-        end
         spectrum_update(1);
     end
 
+    % compute and display spectra
     function spectrum_update(focus_back_to_main)
-        if ishandle(spectrum_ax)
-            % compute and display spectra
+        if ishandle(h_spectrum)
+            clf(h_spectrum);
             kk = find(selected_axes);
             if isempty(kk)
-                spectrum_ax.Color = selection_color;
                 return;
             end
+            ax = axes('Parent', h_spectrum);
             s = [];
             legend_str = {};
             for i = 1:length(kk)
-                s_ = get_current_signal(kk(i), config.fs / 50);
-                s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
-                switch(size(s_, 2))
-                    case 1
-                        legend_str{end+1} = ['Signal ', num2str(kk(i))];
-                    case 2
-                        legend_str{end+1} = ['Signal ', num2str(kk(i)), ', left'];
-                        legend_str{end+1} = ['Signal ', num2str(kk(i)), ', right'];
-                    otherwise
-                        warning(['too many channels for spectrum in signal ', num2str(kk(i))]);
+                s_ = get_current_signal(kk(i), config.fs / 20);
+                if ~isempty(s_)
+                    s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
+                    switch(size(s_, 2))
+                        case 1
+                            legend_str{end+1} = ['Signal ', num2str(kk(i))];
+                        case 2
+                            legend_str{end+1} = ['Signal ', num2str(kk(i)), ', left'];
+                            legend_str{end+1} = ['Signal ', num2str(kk(i)), ', right'];
+                        otherwise
+                            warning(['too many channels for spectrum in signal ', num2str(kk(i))]);
+                    end
                 end
             end
             nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
@@ -282,14 +312,19 @@ h.WindowButtonUpFcn = '';
             fx = max(fx, max(fx(:)) * 1e-20);
             fx = 10*log10(fx);
             f = (0:size(fx, 1)-1) * d * config.fs / nfft;
-            plot(spectrum_ax, f, fx);
+            plot(ax, f/1e3, fx);
+            ax.FontSize = axes_label_font_size;
             f_ = sort(fx(:));
-            v = f_(ceil(length(f_)/100));  % one percentile
-            spectrum_ax.XLim = [0, config.fs/2];
-            spectrum_ax.YLim = [v, f_(end) + (f_(end)-v) * 0.05];
-            grid(spectrum_ax, 'on');
-            zoom(spectrum_ax, 'on');
-            legend(spectrum_ax, legend_str, 'Location', 'best');
+            v = f_(ceil(length(f_)/200));  % 0.5 percentile
+            axis(ax, [0, config.fs/2e3, v, f_(end) + (f_(end)-v) * 0.05]);
+            ax.Position = [0.1, 0.13, 0.87, 0.84];
+            xlabel(ax, 'kHz');
+            ylabel(ax, 'dB');
+            grid(ax, 'on');
+            zoom(h_spectrum, 'on');
+            if length(legend_str) > 1
+                legend(ax, legend_str, 'Location', 'best');
+            end
             if focus_back_to_main
                 figure(fig_no);
             end
