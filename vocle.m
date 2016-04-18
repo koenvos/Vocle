@@ -1,16 +1,18 @@
 function vocle(varargin)
-% audio navigator
-% Copyright Koen Vos, 2016
+% Audio navigator
+%
+% Usage:
 % 
-% same basic interaction as spclab
-% some advantages over spclab:
-% - save configuration such as window location and sampling rate between calls to vocle
-% - scroll wheel zooming
-% - stereo support
-% - stop playback
+% Vocle is inspired by Thomas Eriksson's spclab, and shares some interaction behavior. 
+% Some advantages over spclab:
+% - Stereo support
+% - Possible to stop playback
 % - A/B test
+% - Save configuration such as window location and sampling rate between calls to vocle
+% - Scroll wheel zooming
 
 % todo:
+% - help section
 % - spectrogram
 % - save to workspace / file
 % - option to show spectrum on a perceptual frequency scale?
@@ -20,6 +22,13 @@ function vocle(varargin)
 %   --> show in a different color
 %   --> option to remove signals
 % - auto align function?
+%
+% Copyright Koen Vos, 2016
+
+if isempty(varargin)
+    disp('Missing input arguments. Type ''help vocle'' for help.');
+    return;
+end
 
 % settings
 fig_no = 9372;
