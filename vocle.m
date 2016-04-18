@@ -67,16 +67,23 @@ end
 
 % open figure and use position from config file
 if ~fig_exist(fig_no) && isfield(config, 'Position')
-    h = figure(fig_no);
-    h.Position = config.Position;
+    h_fig = figure(fig_no);
+    h_fig.Position = config.Position;
 else
-    h = figure(fig_no);
+    h_fig = figure(fig_no);
 end
-h.NumberTitle = 'off';
-h.ToolBar = 'none';
-h.MenuBar = 'none';
-h.Name = ' Vocle';
-h.Color = figure_color;
+clf;
+h_fig.NumberTitle = 'off';
+h_fig.ToolBar = 'none';
+%h_fig.ToolBar = 'figure';
+h_fig.MenuBar = 'none';
+h_fig.Name = ' Vocle';
+h_fig.Color = figure_color;
+h_tb = uitoolbar(h_fig);
+h_save = uipushtool(h_tb);
+[img, map] = imread('save_file.gif');
+h_save.CData = ind2rgb(img, map);
+h_save.ClickedCallback = @save_file_callback;
 
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
@@ -137,23 +144,23 @@ end
 write_config;
 
 % put elements on UI
-clf;
 h_ax = cell(num_signals, 1);
 for k = 1:num_signals
     h_ax{k} = axes;
     h_ax{k}.Units = 'pixels';
 end
-text_segment = uicontrol(h, 'Style', 'text', 'FontName', 'Helvetica', ...
+text_segment = uicontrol(h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
-time_slider = uicontrol(h, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color);
+time_slider = uicontrol(h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
-text_fs = uicontrol(h, 'Style', 'text', 'String', 'Sampling Rate', ...
+save_file_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Save to File', 'Callback', @save_file_callback);
+text_fs = uicontrol(h_fig, 'Style', 'text', 'String', 'Sampling Rate', ...
     'FontName', 'Helvetica', 'BackgroundColor', figure_color);
-popup_fs = uicontrol(h, 'Style', 'popup', 'String', ...
+popup_fs = uicontrol(h_fig, 'Style', 'popup', 'String', ...
     {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
 popup_fs.Value = find(str2double(popup_fs.String) == config.fs);
-spectrum_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Spectrum', 'Callback', @spectrum_callback);
-play_button = uicontrol(h, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 10, 'Callback', @start_play);
+spectrum_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Spectrum', 'Callback', @spectrum_callback);
+play_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 10, 'Callback', @start_play);
 update_layout;
 
 % show signals
@@ -161,16 +168,16 @@ update_selections([], 'reset');
 set_time_range([0, inf], 1);
 
 % set figure callbacks
-h.CloseRequestFcn = @window_close_callback;
-h.SizeChangedFcn = @window_resize_callback;
-h.ButtonDownFcn = @window_button_down_callback;
-h.WindowScrollWheelFcn = @window_scroll_callback;
-h.WindowButtonUpFcn = '';
+h_fig.CloseRequestFcn = @window_close_callback;
+h_fig.SizeChangedFcn = @window_resize_callback;
+h_fig.ButtonDownFcn = @window_button_down_callback;
+h_fig.WindowScrollWheelFcn = @window_scroll_callback;
+h_fig.WindowButtonUpFcn = '';
 
     % position UI elements
     function update_layout
-        h_width = h.Position(3);
-        h_height = h.Position(4);
+        h_width = h_fig.Position(3);
+        h_height = h_fig.Position(4);
         width = h_width - left_margin - right_margin;
         height = (h_height - top_margin - bottom_margin - (num_signals-1) * vert_spacing) / num_signals;
         if height > 0 && width > 0
@@ -181,10 +188,32 @@ h.WindowButtonUpFcn = '';
         end
         slider_bottom = bottom_margin - vert_spacing - slider_height;
         time_slider.Position = [left_margin-10, slider_bottom, width+20, slider_height];
+        save_file_button.Position = [h_width*0.65-35, (slider_bottom-button_height)/2, 70, button_height];
         text_fs.Position = [h_width-right_margin-58-78, (slider_bottom-button_height)/2-3, 78, button_height];
         popup_fs.Position = [h_width-right_margin-58, (slider_bottom-button_height)/2, 58, button_height];
         spectrum_button.Position = [left_margin, (slider_bottom-button_height)/2, 60, button_height];
         play_button.Position = [h_width/2-25, (slider_bottom-button_height)/2-3, 50, button_height+6];  % extra big
+    end
+
+    function save_file_callback(~, ~)
+        if diff(highlight_range)
+            title_str = 'Save highlighted segment';
+        else
+            title_str = 'Save selected signal (current view)';
+        end
+        file_types = {'*.wav'; '*.m4a'; '*.mat'};
+        [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, 'signal.wav');
+        if ischar(path_name) && ischar(file_name)
+            kk = find(selected_axes);  % must be of length 1
+            signal = get_current_signal(kk, 0);
+            if file_type_ix ~= length(file_types)
+                % audio file
+                audiowrite([path_name, file_name], signal, config.fs);
+            else
+                % MAT file
+                save([path_name, file_name], 'signal');
+            end
+        end
     end
 
     function update_selections(ind, type)
@@ -221,6 +250,11 @@ h.WindowButtonUpFcn = '';
             spectrum_button.Enable = 'off';
         else
             spectrum_button.Enable = 'on';
+        end
+        if sum(selected_axes) == 1
+            save_file_button.Enable = 'on';
+        else
+            save_file_button.Enable = 'off';
         end
         if diff(highlight_range)
             spectrum_update(0);
@@ -425,7 +459,7 @@ h.WindowButtonUpFcn = '';
     end
 
     function t = get_mouse_pointer_time
-        frac = (h.CurrentPoint(1) - left_margin) / (h.Position(3) - left_margin - right_margin);
+        frac = (h_fig.CurrentPoint(1) - left_margin) / (h_fig.Position(3) - left_margin - right_margin);
         t = time_range_view(1) + frac * diff(time_range_view);
     end
 
@@ -495,7 +529,7 @@ h.WindowButtonUpFcn = '';
     end
 
     function plot_button_down_callback(~, ~)
-        if strcmp(h.SelectionType, 'normal')
+        if strcmp(h_fig.SelectionType, 'normal')
             kk = get(gca, 'UserData');
             t = get_mouse_pointer_time * config.fs;
             % linearly interpolate
@@ -523,13 +557,13 @@ h.WindowButtonUpFcn = '';
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         if verbose
-            disp(['mouse click on axes ', num2str(n_axes), ', type: ' h.SelectionType, ...
-                ', previous: ', last_button_down, ', modifier: ' cell2mat(h.CurrentModifier)]);
+            disp(['mouse click on axes ', num2str(n_axes), ', type: ' h_fig.SelectionType, ...
+                ', previous: ', last_button_down, ', modifier: ' cell2mat(h_fig.CurrentModifier)]);
         end
         % deal with different types of mouse clicks
-        switch(h.SelectionType)
+        switch(h_fig.SelectionType)
             case 'normal'
-                if strcmp(h.CurrentModifier, 'alt')
+                if strcmp(h_fig.CurrentModifier, 'alt')
                     % zoom out 2x
                     zoom_axes(2);
                 else
@@ -538,14 +572,14 @@ h.WindowButtonUpFcn = '';
                     update_selections(n_axes, 'add');
                     highlight_range = get_mouse_pointer_time * [1, 1];
                     text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
-                    h.WindowButtonUpFcn = @button_up_callback;
-                    h.WindowButtonMotionFcn = @button_motion_callback;
+                    h_fig.WindowButtonUpFcn = @button_up_callback;
+                    h_fig.WindowButtonMotionFcn = @button_motion_callback;
                 end
             case 'extend'
                 play_src = n_axes;
                 start_play;
             case 'alt'
-                if strcmp(h.CurrentModifier, 'control')
+                if strcmp(h_fig.CurrentModifier, 'control')
                     % Ctrl + left mouse: toggle selection of current axes
                     update_selections(n_axes, 'toggle');
                 else
@@ -563,7 +597,7 @@ h.WindowButtonUpFcn = '';
                 % double click
                 switch(last_button_down)
                     case 'normal'
-                        if strcmp(h.CurrentModifier, 'alt')
+                        if strcmp(h_fig.CurrentModifier, 'alt')
                             % zoom out 2x
                             zoom_axes(2);
                         else
@@ -575,7 +609,7 @@ h.WindowButtonUpFcn = '';
                         start_play;
                     case 'alt'
                         % double click 'alt': treat as second of two separate clicks
-                        if strcmp(h.CurrentModifier, 'control')
+                        if strcmp(h_fig.CurrentModifier, 'control')
                             % Ctrl + left mouse: toggle selection of current axes
                             update_selections(n_axes, 'toggle');
                         else
@@ -584,16 +618,16 @@ h.WindowButtonUpFcn = '';
                         end
                 end
         end
-        if ~strcmp(h.SelectionType, 'open')
-            last_button_down = h.SelectionType;
+        if ~strcmp(h_fig.SelectionType, 'open')
+            last_button_down = h_fig.SelectionType;
         end
         last_clicked_axes = n_axes;
     end
 
     last_action_was_highlight = 0;
     function button_up_callback(~, ~)
-        h.WindowButtonUpFcn = '';
-        h.WindowButtonMotionFcn = '';
+        h_fig.WindowButtonUpFcn = '';
+        h_fig.WindowButtonMotionFcn = '';
         text_segment.Visible = 'off';
         if last_action_was_highlight == 0
             update_selections(last_clicked_axes, 'unique');
@@ -665,7 +699,7 @@ h.WindowButtonUpFcn = '';
         if verbose
             disp('save config');
         end
-        config.Position = h.Position;
+        config.Position = h_fig.Position;
         if ishandle(h_spectrum)
             config.spectrum_Position = h_spectrum.Position;
         end
