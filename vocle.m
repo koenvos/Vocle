@@ -5,16 +5,15 @@ function vocle(varargin)
 % 
 % Vocle is inspired by Thomas Eriksson's spclab, and shares some interaction behavior. 
 % Some advantages over spclab:
+% - A/B test
 % - Stereo support
 % - Possible to stop playback
-% - A/B test
-% - Save configuration such as window location and sampling rate between calls to vocle
 % - Scroll wheel zooming
+% - Remember configuration such as window location and sampling rate between calls to vocle
 
 % todo:
 % - help section
 % - spectrogram
-% - save to workspace / file
 % - option to show spectrum on a perceptual frequency scale?
 %   --> do smoothing on warped scale
 % - remember selection, zoom and highlight if main window was already open?
@@ -38,16 +37,16 @@ axes_label_font_size = 8;
 % space around and between axes
 left_margin = 42;
 right_margin = 18;
-bottom_margin = 90;
+bottom_margin = 84;
 top_margin = 13;
 vert_spacing = 30;
 slider_height = 16;
-button_height = 20;
 figure_color = [0.92, 0.92, 0.92];
 selection_color = [0.95, 0.95, 0.95];
 highlight_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
 ylim_margin = 1.1;
+file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 48000;
 playback_bits = 24;
@@ -83,16 +82,18 @@ else
 end
 clf;
 h_fig.NumberTitle = 'off';
-h_fig.ToolBar = 'none';
-%h_fig.ToolBar = 'figure';
-h_fig.MenuBar = 'none';
 h_fig.Name = ' Vocle';
 h_fig.Color = figure_color;
-h_tb = uitoolbar(h_fig);
-h_save = uipushtool(h_tb);
-[img, map] = imread('save_file.gif');
-h_save.CData = ind2rgb(img, map);
-h_save.ClickedCallback = @save_file_callback;
+h_fig.ToolBar = 'none';
+h_fig.MenuBar = 'none';
+h_save = uimenu(h_fig, 'Label', 'Save', 'Callback', @save_file_callback);
+h_fs = uimenu(h_fig, 'Label', 'Sampling Rate');
+for k = 1:length(file_fs)
+    uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
+end
+h_spec_menu = uimenu(h_fig, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
+h_specgram_menu = uimenu(h_fig, 'Label', 'Spectrogram', 'Callback', @spectrogram_callback);
+h_specgram_menu.Enable = 'off';
 
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
@@ -138,6 +139,8 @@ end
 if sum(file_fs)
     config.fs = max(max(file_fs), first_arg_fs * config.fs);
 end
+set(findall(h_fs.Children, 'Label', num2str(config.fs)), 'Checked', 'on');
+write_config;
 for k = 1:num_signals
     if file_fs(k)
         % upsample to highest sampling rate
@@ -150,7 +153,6 @@ for k = 1:num_signals
     signals_negative(k) = min(s_) < 0;
     signals_ylim(k) = ylim_margin * max(abs(s_));
 end
-write_config;
 
 % put elements on UI
 h_ax = cell(num_signals, 1);
@@ -162,13 +164,6 @@ text_segment = uicontrol(h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
 time_slider = uicontrol(h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
-save_file_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Save to File', 'Callback', @save_file_callback);
-text_fs = uicontrol(h_fig, 'Style', 'text', 'String', 'Sampling Rate', ...
-    'FontName', 'Helvetica', 'BackgroundColor', figure_color);
-popup_fs = uicontrol(h_fig, 'Style', 'popup', 'String', ...
-    {'192000', '96000', '48000', '44100', '32000', '16000', '8000'}, 'Callback', @change_fs_callback);
-popup_fs.Value = find(str2double(popup_fs.String) == config.fs);
-spectrum_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Spectrum', 'Callback', @spectrum_callback);
 play_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 10, 'Callback', @start_play);
 update_layout;
 
@@ -197,11 +192,7 @@ h_fig.WindowButtonUpFcn = '';
         end
         slider_bottom = bottom_margin - vert_spacing - slider_height;
         time_slider.Position = [left_margin-10, slider_bottom, width+20, slider_height];
-        save_file_button.Position = [h_width*0.65-35, (slider_bottom-button_height)/2, 70, button_height];
-        text_fs.Position = [h_width-right_margin-58-78, (slider_bottom-button_height)/2-3, 78, button_height];
-        popup_fs.Position = [h_width-right_margin-58, (slider_bottom-button_height)/2, 58, button_height];
-        spectrum_button.Position = [left_margin, (slider_bottom-button_height)/2, 60, button_height];
-        play_button.Position = [h_width/2-25, (slider_bottom-button_height)/2-3, 50, button_height+6];  % extra big
+        play_button.Position = [left_margin+width/2-30, (slider_bottom-22)/2, 60, 22];  % extra big
     end
 
     function save_file_callback(~, ~)
@@ -256,14 +247,14 @@ h_fig.WindowButtonUpFcn = '';
             play_button.Enable = 'off';
         end
         if sum(selected_axes) == 0
-            spectrum_button.Enable = 'off';
+            h_spec_menu.Enable = 'off';
         else
-            spectrum_button.Enable = 'on';
+            h_spec_menu.Enable = 'on';
         end
         if sum(selected_axes) == 1
-            save_file_button.Enable = 'on';
+            h_save.Enable = 'on';
         else
-            save_file_button.Enable = 'off';
+            h_save.Enable = 'off';
         end
         if diff(highlight_range)
             spectrum_update(0);
@@ -317,6 +308,10 @@ h_fig.WindowButtonUpFcn = '';
         spectrum_update(1);
     end
 
+    function spectrogram_callback(varargin)
+        disp('spectrogram is not yet implemented..');
+    end
+
     % compute and display spectra
     function spectrum_update(focus_back_to_main)
         if ishandle(h_spectrum)
@@ -356,7 +351,6 @@ h_fig.WindowButtonUpFcn = '';
             fx = 10*log10(fx);
             f = (0:size(fx, 1)-1) * d * config.fs / nfft;
             plot(ax, f/1e3, fx);
-            ax.FontSize = axes_label_font_size;
             f_ = sort(fx(:));
             v = f_(ceil(length(f_)/200));  % 0.5 percentile
             axis(ax, [0, config.fs/2e3, v, f_(end) + (f_(end)-v) * 0.05]);
@@ -679,7 +673,9 @@ h_fig.WindowButtonUpFcn = '';
 
     function change_fs_callback(src, ~)
         fs_old = config.fs;
-        config.fs = str2double(src.String{src.Value});
+        config.fs = str2double(src.Label);
+        set(findall(h_fs.Children, 'Checked', 'on'), 'Checked', 'off');
+        src.Checked = 'on';
         write_config();
         highlight_range = highlight_range * fs_old / config.fs;
         set_time_range(time_range_view * fs_old / config.fs, 1);
