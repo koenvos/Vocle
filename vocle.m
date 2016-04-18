@@ -353,7 +353,7 @@ h_fig.WindowButtonUpFcn = '';
             plot(ax, f/1e3, fx);
             f_ = sort(fx(:));
             v = f_(ceil(length(f_)/200));  % 0.5 percentile
-            axis(ax, [0, config.fs/2e3, v, f_(end) + (f_(end)-v) * 0.05 + 1e-12]);
+            axis(ax, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             ax.Position = [0.1, 0.13, 0.87, 0.84];
             xlabel(ax, 'kHz');
             ylabel(ax, 'dB');
@@ -651,7 +651,7 @@ h_fig.WindowButtonUpFcn = '';
         if delta < 1
             str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(round(delta * config.fs)), ')'];
         else
-            str = num2str(delta, '%.3f');
+            str = [num2str(delta, '%.3f'), ' sec'];
         end
         text_segment.String = str;
         text_segment.Visible = 'on';
