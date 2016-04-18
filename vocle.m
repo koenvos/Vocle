@@ -44,13 +44,12 @@ playback_bits = 24;
 playback_dBov = -3;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
-verbose = 0;
+verbose = 1;
 
 % function-wide variables
 h_ax = [];
 h_spectrum = [];
 spectrum_ax = [];
-spectrum_legend = [];
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
@@ -241,6 +240,7 @@ h.WindowButtonUpFcn = '';
         h_spectrum.MenuBar = 'none';
         h_spectrum.ToolBar = 'figure';
         h_spectrum.Name = ' Vocle Spectrum';
+        h_spectrum.Color = figure_color;
         if isempty(spectrum_ax) || ~ishandle(spectrum_ax)
             spectrum_ax = axes;
         end
@@ -252,8 +252,7 @@ h.WindowButtonUpFcn = '';
             % compute and display spectra
             kk = find(selected_axes);
             if isempty(kk)
-                delete(spectrum_legend);
-                cla(spectrum_ax);
+                spectrum_ax.Color = selection_color;
                 return;
             end
             s = [];
@@ -290,7 +289,7 @@ h.WindowButtonUpFcn = '';
             spectrum_ax.YLim = [v, f_(end) + (f_(end)-v) * 0.05];
             grid(spectrum_ax, 'on');
             zoom(spectrum_ax, 'on');
-            spectrum_legend = legend(spectrum_ax, legend_str, 'Location', 'best');
+            legend(spectrum_ax, legend_str, 'Location', 'best');
             if focus_back_to_main
                 figure(fig_no);
             end
