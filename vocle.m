@@ -11,6 +11,7 @@ function vocle(varargin)
 % - A/B test
 
 % todo:
+% - files as input arguments
 % - spectrogram
 % - save to workspace / file
 % - option to show spectrum on a perceptual frequency scale?
@@ -48,6 +49,8 @@ verbose = 0;
 % function-wide variables
 h_ax = [];
 h_spectrum = [];
+spectrum_ax = [];
+spectrum_legend = [];
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
@@ -126,7 +129,7 @@ update_layout;
 
 % show signals
 update_selections([], 'reset');
-set_time_range([0, inf]);
+set_time_range([0, inf], 1);
 
 % set figure callbacks
 h.CloseRequestFcn = @window_close_callback;
@@ -163,6 +166,8 @@ h.WindowButtonUpFcn = '';
                 case {'unique', 'reset'}
                     selected_axes = zeros(num_signals, 1);
                     selected_axes(ind) = 1;
+                case 'add'
+                    selected_axes(ind) = 1;
                 case 'toggle'
                     selected_axes(ind) = 1 - selected_axes(ind);
             end
@@ -187,6 +192,9 @@ h.WindowButtonUpFcn = '';
             spectrum_button.Enable = 'off';
         else
             spectrum_button.Enable = 'on';
+        end
+        if diff(highlight_range)
+            spectrum_update(0);
         end
     end
 
@@ -233,46 +241,60 @@ h.WindowButtonUpFcn = '';
         h_spectrum.MenuBar = 'none';
         h_spectrum.ToolBar = 'figure';
         h_spectrum.Name = ' Vocle Spectrum';
-        clf;
-        
-        % compute and display spectra
-        kk = find(selected_axes);
-        s = [];
-        legend_str = {};
-        for i = 1:length(kk)
-            s_ = get_current_signal(kk(i), config.fs / 50);
-            s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
-            switch(size(s_, 2))
-                case 1
-                    legend_str{end+1} = ['Signal ', num2str(kk(i))];
-                case 2
-                    legend_str{end+1} = ['Signal ', num2str(kk(i)), ', left'];
-                    legend_str{end+1} = ['Signal ', num2str(kk(i)), ', right'];
-                otherwise
-                    warning(['too many channels for spectrum in signal ', num2str(kk(i))]);
+        if isempty(spectrum_ax) || ~ishandle(spectrum_ax)
+            spectrum_ax = axes;
+        end
+        spectrum_update(1);
+    end
+
+    function spectrum_update(focus_back_to_main)
+        if ishandle(spectrum_ax)
+            % compute and display spectra
+            kk = find(selected_axes);
+            if isempty(kk)
+                delete(spectrum_legend);
+                cla(spectrum_ax);
+                return;
+            end
+            s = [];
+            legend_str = {};
+            for i = 1:length(kk)
+                s_ = get_current_signal(kk(i), config.fs / 50);
+                s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
+                switch(size(s_, 2))
+                    case 1
+                        legend_str{end+1} = ['Signal ', num2str(kk(i))];
+                    case 2
+                        legend_str{end+1} = ['Signal ', num2str(kk(i)), ', left'];
+                        legend_str{end+1} = ['Signal ', num2str(kk(i)), ', right'];
+                    otherwise
+                        warning(['too many channels for spectrum in signal ', num2str(kk(i))]);
+                end
+            end
+            nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
+            d = floor(spectrum_sampling_Hz / (config.fs / nfft));
+            j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
+            w = cos((-j+1:j-1)'/j*pi/2).^2;
+            w = w / sum(w);
+            fx = abs(fft(s, nfft)).^2;
+            % circular convolution
+            fx = ifft(bsxfun(@times, fft(fx), fft(w, nfft)));
+            fx = fx(j:d:nfft/2+j, :);
+            fx = max(fx, max(fx(:)) * 1e-20);
+            fx = 10*log10(fx);
+            f = (0:size(fx, 1)-1) * d * config.fs / nfft;
+            plot(spectrum_ax, f, fx);
+            f_ = sort(fx(:));
+            v = f_(ceil(length(f_)/100));  % one percentile
+            spectrum_ax.XLim = [0, config.fs/2];
+            spectrum_ax.YLim = [v, f_(end) + (f_(end)-v) * 0.05];
+            grid(spectrum_ax, 'on');
+            zoom(spectrum_ax, 'on');
+            spectrum_legend = legend(spectrum_ax, legend_str, 'Location', 'best');
+            if focus_back_to_main
+                figure(fig_no);
             end
         end
-        nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
-        d = floor(spectrum_sampling_Hz / (config.fs / nfft));
-        j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
-        w = cos((-j+1:j-1)'/j*pi/2).^2;
-        w = w / sum(w);
-        fx = abs(fft(s, nfft)).^2;
-        % circular convolution
-        fx = ifft(bsxfun(@times, fft(fx), fft(w, nfft)));
-        fx = fx(j:d:nfft/2+j, :);
-        fx = max(fx, max(fx(:)) * 1e-20);
-        fx = 10*log10(fx);
-        f = (0:size(fx, 1)-1) * d * config.fs / nfft;
-        plot(f, fx);
-        f_ = sort(fx(:));
-        v = f_(ceil(length(f_)/100));  % one percentile
-        axis([0, config.fs/2, v, f_(end) + (f_(end)-v) * 0.05]);
-        grid on;
-        zoom on;
-        legend(legend_str, 'Location', 'best');
-        % bring focus back to main window
-        figure(fig_no);
     end
 
     function [s, t0] = get_current_signal(kk, win_len)
@@ -288,7 +310,7 @@ h.WindowButtonUpFcn = '';
         t1 = min(round(t1 * config.fs), signal_lengths(kk));
         s = s(t0:t1, :);
         smpls = size(s, 1);
-        if nargin > 1 && win_len > 0
+        if win_len > 0
             % windowing
             fade_smpls = min(win_len, smpls / 2);
             win = sin((1:fade_smpls)'/(fade_smpls+1)*pi/2) .^ 2;
@@ -383,7 +405,7 @@ h.WindowButtonUpFcn = '';
         t0 = max(t0, 0);
         t1 = t0 + interval;
         t1 = min(t1, max(signal_lengths) / config.fs);
-        set_time_range([t1 - interval, t1]);
+        set_time_range([t1 - interval, t1], 1);
     end
 
     % update axis
@@ -396,7 +418,7 @@ h.WindowButtonUpFcn = '';
         % update signals
         plot_signals;
         % update slider
-        if nargin < 2 || update_slider
+        if update_slider
             time_diff = diff(time_range_view);
             val = (mean(time_range_view) - time_diff / 2 + 1e-6) / (max_time - time_diff + 2e-6);
             slider_listener.Enabled = 0;
@@ -479,6 +501,7 @@ h.WindowButtonUpFcn = '';
                 else
                     % left mouse: select current axes; setup segment
                     delete_highlights;
+                    update_selections(n_axes, 'add');
                     highlight_range = get_mouse_pointer_time * [1, 1];
                     text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                     h.WindowButtonUpFcn = @button_up_callback;
@@ -498,7 +521,7 @@ h.WindowButtonUpFcn = '';
                         zoom_axes(2);
                     else
                         % zoom to segment
-                        set_time_range(sort(highlight_range));
+                        set_time_range(sort(highlight_range), 1);
                         delete_highlights;
                     end
                 end
@@ -511,7 +534,7 @@ h.WindowButtonUpFcn = '';
                             zoom_axes(2);
                         else
                             % double click left: zoom out full
-                            set_time_range([0, inf]);
+                            set_time_range([0, inf], 1);
                         end
                     case 'extend'
                         play_src = n_axes;
@@ -540,6 +563,8 @@ h.WindowButtonUpFcn = '';
         text_segment.Visible = 'off';
         if last_action_was_highlight == 0
             update_selections(last_clicked_axes, 'unique');
+        else
+            spectrum_update(0);
         end
         last_action_was_highlight = 0;
     end
@@ -580,7 +605,7 @@ h.WindowButtonUpFcn = '';
         config.fs = str2double(src.String{src.Value});
         write_config();
         highlight_range = highlight_range * fs_old / config.fs;
-        set_time_range(time_range_view * fs_old / config.fs);
+        set_time_range(time_range_view * fs_old / config.fs, 1);
     end
 
     function window_resize_callback(~, ~)
