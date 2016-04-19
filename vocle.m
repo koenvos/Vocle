@@ -1,19 +1,37 @@
 function vocle(varargin)
 % Audio navigator
 %
-% Usage:
+% Usage
+%    Vocle([fs,] x, y);         Open vocle with signals x and y, optionally setting the sampling rate to fs 
+%    Vocle('x.wav', 'y.mp3');   Open vocle with files x.wav and y.mp3
+% Vocle reads unrecognized file types as headerless 16-bit mono files. For these you can specify a
+% sampling rate as the first argument (or just set the sampling rate later in the menu). You may
+% also mix signals and files in the input arguments.
 % 
-% Vocle is inspired by Thomas Eriksson's spclab, and shares some interaction behavior. 
-% Some advantages over spclab:
-% - A/B test
-% - Stereo support
-% - Possible to stop playback
-% - Scroll wheel zooming
-% - Remember configuration such as window location and sampling rate between calls to vocle
+% Navigation
+%    Left mouse:                Toggle axes selection
+%    Left mouse + drag:         Hhighlight segment
+%    Right mouse:
+%     - if highlight exists:    Zoom to highlighted segment; remove highlight
+%     - otherwise:              Zoom out
+%    Double click left:         Zoom out full
+%    Shift + left/right:        Play window or highlighted segment
+%    Mouse click outside axes:  Unselect all axes; remove highlight
+%    Mouse scroll:              Zoom in or out
+%
+% Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior. 
+% Advantages over spclab:
+%  - A/B test (select two signals)
+%  - Stereo support
+%  - Possible to stop playback
+%  - Scroll wheel zooming
+%  - Use sampling rate info from input files
+%  - Remember window locations and sampling rate
+%  - Reimplement some spclab features broken by changes in Matlab
+
+% Copyright 2016 Koen Vos
 
 % todo:
-% - play cursor timing
-% - help section
 % - spectrogram
 % - option to show spectrum on a perceptual frequency scale?
 %   --> do smoothing on warped scale
@@ -23,15 +41,11 @@ function vocle(varargin)
 %   --> option to remove signals
 % - auto align function?
 % - Info menu item
-%
-% Copyright Koen Vos, 2016
 
 % settings
 fig_no = 9372;
 spectrum_no = fig_no+1;
-config_file = [which('vocle'), 'at'];
 axes_label_font_size = 8;
-% space around and between axes
 left_margin = 42;
 right_margin = 22;
 bottom_margin = 84;
@@ -67,6 +81,7 @@ playback_start_time = [];
 
 % load configuration, if possible
 config = [];
+config_file = [which('vocle'), 'at'];
 if exist(config_file, 'file')
     load(config_file);
 end
@@ -561,14 +576,6 @@ h_fig.WindowButtonUpFcn = '';
         axes_button_down_callback(gca, []);
     end
 
-    % left mouse: toggle axes selection
-    % left mouse + drag: highlight segment
-    % right mouse:
-    % - zoom to highlighted segment; remove highlight
-    % - zoom out, if no highlight
-    % double click left: zoom out full
-    % Shift + left or Shift + right: play window or highlighted segment
-    % mouse click outside axes: unselect all axes; remove highlight
     last_clicked_axes = [];
     last_button_down = '';
     highlight_start = [];
