@@ -241,6 +241,9 @@ h_fig.WindowButtonUpFcn = '';
         if ischar(path_name) && ischar(file_name)
             kk = find(selected_axes);  % must be of length 1
             signal = get_current_signal(kk, 0);
+            if isempty(signal)
+                return;
+            end
             if file_type_ix ~= length(file_types)
                 % audio file
                 audiowrite([path_name, file_name], signal, config.fs);
