@@ -48,6 +48,7 @@ default_fs = 48000;
 playback_fs = 48000;
 playback_bits = 24;
 playback_dBov = -2;
+playback_cursor_delay_ms = 100;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
 verbose = 0;
@@ -61,8 +62,8 @@ highlight_range = [];
 play_cursor = [];
 player = [];
 play_src = [];
-play_start_time = [];
-player_prev_smpl = 0;
+play_time_range = [];
+playback_start_time = [];
 
 % load configuration, if possible
 config = [];
@@ -387,7 +388,7 @@ h_fig.WindowButtonUpFcn = '';
         disp('spectrogram is not yet implemented..');
     end
 
-    function [s, t0] = get_current_signal(kk, win_len)
+    function [s, time_range] = get_current_signal(kk, win_len)
         s = signals{kk};
         if ~isempty(highlight_range) && abs(diff(highlight_range)) > 0
             t0 = min(highlight_range);
@@ -408,7 +409,7 @@ h_fig.WindowButtonUpFcn = '';
             s(t, :) = bsxfun(@times, s(t, :), win);
             s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
         end
-        t0 = t0 / config.fs;
+        time_range = [t0, t1] / config.fs;
     end
 
     function start_play(varargin)
@@ -426,16 +427,16 @@ h_fig.WindowButtonUpFcn = '';
         play_button.Callback = @stop_play;
         if length(play_src) == 1
             % playback from a single axes
-            [s, play_start_time] = get_current_signal(play_src, config.fs / 100);
+            [s, play_time_range] = get_current_signal(play_src, config.fs / 100);
             s = s / (signals_ylim(play_src) / ylim_margin) * 10^(0.05*playback_dBov);
             s = resample(s, playback_fs, config.fs, 50);
             player = audioplayer(s, playback_fs, playback_bits);
-            player.StopFcn = @stop_play;
             player.TimerFcn = @draw_play_cursor;
             player.TimerPeriod = 0.02;
-            play_cursor = line([1, 1] * play_start_time, [-1, 1] * signals_ylim(play_src), ...
+            player.StopFcn = @stop_play;
+            play_cursor = line([1, 1] * play_time_range(1), [-1, 1] * signals_ylim(play_src), ...
                 'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
-            player_prev_smpl = 0;
+            playback_start_time = tic;
             play(player);
         elseif length(play_src) == 2
             % A/B test
@@ -469,13 +470,9 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     function draw_play_cursor(~, ~)
+        t = play_time_range(1) + toc(playback_start_time) - playback_cursor_delay_ms / 1e3;
+        t = min(max(t, play_time_range(1)), play_time_range(2));
         delete(play_cursor);
-        % the player sometimes ends with CurrentSample = 1
-        if player.CurrentSample < player_prev_smpl
-            return;
-        end
-        player_prev_smpl = player.CurrentSample;
-        t = play_start_time + (player.CurrentSample - 1) / playback_fs;
         play_cursor = line([1, 1] * t, [-1, 1] * signals_ylim(play_src), ...
             'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
     end
