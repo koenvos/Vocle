@@ -12,6 +12,7 @@ function vocle(varargin)
 % - Remember configuration such as window location and sampling rate between calls to vocle
 
 % todo:
+% - play cursor timing
 % - help section
 % - spectrogram
 % - option to show spectrum on a perceptual frequency scale?
@@ -21,13 +22,9 @@ function vocle(varargin)
 %   --> show in a different color
 %   --> option to remove signals
 % - auto align function?
+% - Info menu item
 %
 % Copyright Koen Vos, 2016
-
-if isempty(varargin)
-    disp('Missing input arguments. Type ''help vocle'' for help.');
-    return;
-end
 
 % settings
 fig_no = 9372;
@@ -86,7 +83,9 @@ h_fig.Name = ' Vocle';
 h_fig.Color = figure_color;
 h_fig.ToolBar = 'none';
 h_fig.MenuBar = 'none';
-h_save = uimenu(h_fig, 'Label', 'Save &As..', 'Callback', @save_file_callback);
+h_file = uimenu(h_fig, 'Label', '&File');
+uimenu(h_file, 'Label', '&Open', 'Callback', @open_file_callback);
+h_save = uimenu(h_file, 'Label', 'Save &As..', 'Callback', @save_file_callback);
 h_spec_menu = uimenu(h_fig, 'Label', '&Spectrum', 'Callback', @spectrum_callback);
 h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
 h_specgram_menu.Enable = 'off';
@@ -98,7 +97,7 @@ end
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
 first_arg_fs = 0;
-if isscalar(varargin{1})
+if ~isempty(varargin) && isscalar(varargin{1}) && isnumeric(varargin{1})
     config.fs = varargin{1};
     first_arg_fs = 1;
 elseif ~isfield(config, 'fs')
@@ -107,7 +106,7 @@ end
 num_signals = length(varargin) - first_arg_fs;
 highlight_patches = cell(num_signals, 1);
 signals = cell(num_signals, 1);
-signal_lengths = zeros(num_signals, 1);
+signal_lengths = config.fs;  % default, in case of no input args
 signals_negative = zeros(num_signals, 1);
 signals_ylim = zeros(num_signals, 1);
 file_fs = zeros(num_signals, 1);
@@ -195,11 +194,30 @@ h_fig.WindowButtonUpFcn = '';
         play_button.Position = [left_margin+width/2-30, (slider_bottom-22)/2, 60, 22];  % extra big
     end
 
+    function open_file_callback(~, ~)
+        file_types = {'*.wav;*.mp3;*.mp4;*.m4a;*.flac;*.ogg;*.pcm;*.raw)', ...
+            'Audio files (*.wav,*.mp3,*.mp4,*.m4a,*.flac,*.ogg,*.pcm,*.raw)'};
+        [file_names, path_name] = uigetfile(file_types, 'Open audio file(s)', 'MultiSelect', 'on');
+        if isempty(file_names)
+            return;
+        end
+        str = 'vocle(';
+        if iscell(file_names)
+            for kk = 1:length(file_names)-1
+                 str = [str, '''', path_name file_names{kk}, ''', '];
+            end
+            str = [str, '''', path_name file_names{end}, ''');'];
+        else
+            str = [str, '''', path_name file_names, ''');'];
+        end
+        eval(str);
+    end
+
     function save_file_callback(~, ~)
         if diff(highlight_range)
             title_str = 'Save highlighted segment';
         else
-            title_str = 'Save selected signal (current view)';
+            title_str = 'Save selected signal';
         end
         file_types = {'*.wav'; '*.m4a'; '*.mat'};
         [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, 'signal.wav');
