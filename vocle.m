@@ -17,7 +17,7 @@ function vocle(varargin)
 %      - otherwise:              Zoom out
 %     Double click left:         Zoom out full
 %     Shift + left/right:        Play window or highlighted segment
-%     Mouse click outside axes:  Unselect all axes; remove highlight
+%     Mouse click outside axes:  Remove highlight
 %     Mouse scroll:              Zoom in or out
 %
 %  Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior. 
@@ -670,7 +670,6 @@ h_fig.WindowButtonUpFcn = '';
 
     function window_button_down_callback(~, ~)
         % mouse click outside axes
-        update_selections([], 'reset');
         delete_highlights;
         highlight_range = [];
     end
