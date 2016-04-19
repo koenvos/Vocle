@@ -86,17 +86,13 @@ h_fig.Name = ' Vocle';
 h_fig.Color = figure_color;
 h_fig.ToolBar = 'none';
 h_fig.MenuBar = 'none';
-h_save = uimenu(h_fig, 'Label', 'Save', 'Callback', @save_file_callback);
-h_spec_menu = uimenu(h_fig, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
-h_specgram_menu = uimenu(h_fig, 'Label', 'Spectrogram', 'Callback', @spectrogram_callback);
+h_save = uimenu(h_fig, 'Label', 'Save &As..', 'Callback', @save_file_callback);
+h_spec_menu = uimenu(h_fig, 'Label', '&Spectrum', 'Callback', @spectrum_callback);
+h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
 h_specgram_menu.Enable = 'off';
-h_fs = uimenu(h_fig, 'Label', 'Sampling Rate');
+h_fs = uimenu(h_fig, 'Label', 'Sampling &Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
-end
-
-if verbose
-    set(h_fig, 'WindowKeyPressFcn', @(h,e) disp(e.Modifier));
 end
 
 % process inputs
@@ -261,7 +257,7 @@ h_fig.WindowButtonUpFcn = '';
             h_save.Enable = 'off';
         end
         if diff(highlight_range)
-            spectrum_update(0);
+            spectrum_update;
         end
     end
 
@@ -309,13 +305,12 @@ h_fig.WindowButtonUpFcn = '';
         h_spectrum.ToolBar = 'figure';
         h_spectrum.Name = ' Vocle Spectrum';
         h_spectrum.Color = figure_color;
-        spectrum_update(1);
+        spectrum_update;
     end
 
     % compute and display spectra
-    function spectrum_update(focus_back_to_main)
+    function spectrum_update
         if ishandle(h_spectrum)
-            figure(spectrum_no);
             clf(h_spectrum);
             kk = find(selected_axes);
             if isempty(kk)
@@ -353,10 +348,10 @@ h_fig.WindowButtonUpFcn = '';
             fx = max(fx, 1e-100);
             fx = 10*log10(fx);
             f = (0:size(fx, 1)-1) * d * config.fs / nfft;
-            ax = axes('Parent', h_spectrum);
-            plot(ax, f/1e3, fx);
             f_ = sort(fx(:));
             v = f_(ceil(length(f_)/200));  % 0.5 percentile
+            ax = axes('Parent', h_spectrum);
+            plot(ax, f/1e3, fx);
             axis(ax, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             ax.Position = [0.1, 0.13, 0.87, 0.84];
             xlabel(ax, 'kHz');
@@ -366,10 +361,6 @@ h_fig.WindowButtonUpFcn = '';
             zoom(h_spectrum, 'on');
             if length(legend_str) > 1
                 legend(ax, legend_str, 'Location', 'best');
-            end
-            if focus_back_to_main
-                drawnow;
-                figure(fig_no);
             end
         end
     end
@@ -555,18 +546,17 @@ h_fig.WindowButtonUpFcn = '';
         axes_button_down_callback(gca, []);
     end
 
-    % left mouse: select axes and unselect all others; remove highlight
+    % left mouse: toggle axes selection
     % left mouse + drag: highlight segment
     % right mouse:
     % - zoom to highlighted segment; remove highlight
     % - zoom out, if no highlight
-    % double click left: left mouse + zoom out full
-    % Ctrl + left: toggle selection of axes
-    % Shift + left: play window or highlighted segment
-    % Alt + left: zoom out
-    % mouse click outside axes: unselect all axes
+    % double click left: zoom out full
+    % Shift + left or Shift + right: play window or highlighted segment
+    % mouse click outside axes: unselect all axes; remove highlight
     last_clicked_axes = [];
     last_button_down = '';
+    highlight_start = [];
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         if verbose
@@ -576,59 +566,39 @@ h_fig.WindowButtonUpFcn = '';
         % deal with different types of mouse clicks
         switch(h_fig.SelectionType)
             case 'normal'
-                if strcmp(h_fig.CurrentModifier, 'alt')
+                % left mouse: start highlight, move indicator to current axes, setup mouse callbacks
+                highlight_start = get_mouse_pointer_time;
+                text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
+                h_fig.WindowButtonUpFcn = @button_up_callback;
+                h_fig.WindowButtonMotionFcn = @button_motion_callback;
+            case 'alt'
+                % right mouse
+                if isempty(highlight_range) || diff(highlight_range) == 0
                     % zoom out 2x
                     zoom_axes(2);
                 else
-                    % left mouse: select current axes; setup segment
+                    % zoom to segment
+                    set_time_range(sort(highlight_range), 1);
                     delete_highlights;
-                    update_selections(n_axes, 'add');
-                    highlight_range = get_mouse_pointer_time * [1, 1];
-                    text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
-                    h_fig.WindowButtonUpFcn = @button_up_callback;
-                    h_fig.WindowButtonMotionFcn = @button_motion_callback;
                 end
             case 'extend'
+                % Shift + left mouse
                 play_src = n_axes;
                 start_play;
-            case 'alt'
-                if strcmp(h_fig.CurrentModifier, 'control')
-                    % Ctrl + left mouse: toggle selection of current axes
-                    update_selections(n_axes, 'toggle');
-                else
-                    % right mouse
-                    if isempty(highlight_range) || diff(highlight_range) == 0
-                        % zoom out 2x
-                        zoom_axes(2);
-                    else
-                        % zoom to segment
-                        set_time_range(sort(highlight_range), 1);
-                        delete_highlights;
-                    end
-                end
             case 'open'
                 % double click
                 switch(last_button_down)
                     case 'normal'
-                        if strcmp(h_fig.CurrentModifier, 'alt')
-                            % zoom out 2x
-                            zoom_axes(2);
-                        else
-                            % double click left: zoom out full
-                            set_time_range([0, inf], 1);
-                        end
+                        % double click left: zoom out full
+                        update_selections(last_clicked_axes, 'toggle');
+                        set_time_range([0, inf], 1);
+                    case 'alt'
+                        % right mouse: zoom out 2x
+                        zoom_axes(2);
                     case 'extend'
+                        % Shift + double click
                         play_src = n_axes;
                         start_play;
-                    case 'alt'
-                        % double click 'alt': treat as second of two separate clicks
-                        if strcmp(h_fig.CurrentModifier, 'control')
-                            % Ctrl + left mouse: toggle selection of current axes
-                            update_selections(n_axes, 'toggle');
-                        else
-                            % zoom out 2x
-                            zoom_axes(2);
-                        end
                 end
         end
         if ~strcmp(h_fig.SelectionType, 'open')
@@ -642,16 +612,17 @@ h_fig.WindowButtonUpFcn = '';
         h_fig.WindowButtonUpFcn = '';
         h_fig.WindowButtonMotionFcn = '';
         text_segment.Visible = 'off';
-        if last_action_was_highlight == 0
-            update_selections(last_clicked_axes, 'unique');
+        if last_action_was_highlight
+            highlight_range = [highlight_start, get_mouse_pointer_time];
+            update_selections(last_clicked_axes, 'add');
         else
-            spectrum_update(0);
+            update_selections(last_clicked_axes, 'toggle');
         end
         last_action_was_highlight = 0;
     end
 
     function button_motion_callback(~, ~)
-        highlight_range(2) = get_mouse_pointer_time;
+        highlight_range = [highlight_start, get_mouse_pointer_time];
         delta = abs(diff(highlight_range));
         if delta < 1
             str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(round(delta * config.fs)), ')'];
@@ -689,7 +660,7 @@ h_fig.WindowButtonUpFcn = '';
         write_config();
         highlight_range = highlight_range * fs_old / config.fs;
         set_time_range(time_range_view * fs_old / config.fs, 1);
-        spectrum_update(0);
+        spectrum_update;
     end
 
     function window_resize_callback(~, ~)
