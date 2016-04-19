@@ -95,6 +95,10 @@ for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
 end
 
+if verbose
+    set(h_fig, 'WindowKeyPressFcn', @(h,e) disp(e.Modifier));
+end
+
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
 first_arg_fs = 0;
@@ -364,6 +368,7 @@ h_fig.WindowButtonUpFcn = '';
                 legend(ax, legend_str, 'Location', 'best');
             end
             if focus_back_to_main
+                drawnow;
                 figure(fig_no);
             end
         end
