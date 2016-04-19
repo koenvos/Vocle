@@ -1,35 +1,36 @@
 function vocle(varargin)
-% Audio navigator
+% VOCLE Audio navigator
+%  Vocle lets you view, play and compare audio signals.
 %
-% Usage
-%    Vocle([fs,] x, y);         Open vocle with signals x and y, optionally setting the sampling rate to fs 
-%    Vocle('x.wav', 'y.mp3');   Open vocle with files x.wav and y.mp3
-% Vocle reads unrecognized file types as headerless 16-bit mono files. For these you can specify a
-% sampling rate as the first argument (or just set the sampling rate later in the menu). You may
-% also mix signals and files in the input arguments.
+%  Usage
+%     Vocle([fs,] x, y);         Open vocle with signals x and y, optionally setting the sampling rate to fs 
+%     Vocle('x.wav', 'y.mp3');   Open vocle with files x.wav and y.mp3
+%  Vocle reads unrecognized file types as headerless 16-bit mono files. For these you can specify a
+%  sampling rate as the first argument (or just set the sampling rate later in the menu). You may
+%  also mix signals and files in the input arguments.
 % 
-% Navigation
-%    Left mouse:                Toggle axes selection
-%    Left mouse + drag:         Hhighlight segment
-%    Right mouse:
-%     - if highlight exists:    Zoom to highlighted segment; remove highlight
-%     - otherwise:              Zoom out
-%    Double click left:         Zoom out full
-%    Shift + left/right:        Play window or highlighted segment
-%    Mouse click outside axes:  Unselect all axes; remove highlight
-%    Mouse scroll:              Zoom in or out
+%  Navigation
+%     Left mouse:                Toggle axes selection
+%     Left mouse + drag:         Hhighlight segment
+%     Right mouse:
+%      - if highlight exists:    Zoom to highlighted segment; remove highlight
+%      - otherwise:              Zoom out
+%     Double click left:         Zoom out full
+%     Shift + left/right:        Play window or highlighted segment
+%     Mouse click outside axes:  Unselect all axes; remove highlight
+%     Mouse scroll:              Zoom in or out
 %
-% Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior. 
-% Advantages over spclab:
-%  - A/B test (select two signals)
-%  - Stereo support
-%  - Possible to stop playback
-%  - Scroll wheel zooming
-%  - Use sampling rate info from input files
-%  - Remember window locations and sampling rate
-%  - Reimplement some spclab features broken by changes in Matlab
+%  Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior. 
+%  Advantages over spclab:
+%   - A/B test (select two signals)
+%   - Stereo support
+%   - Possible to stop playback
+%   - Scroll wheel zooming
+%   - Use sampling rate info from input files
+%   - Remember window locations and sampling rate
+%   - Reimplement some spclab features broken by changes in Matlab
 
-% Copyright 2016 Koen Vos
+%  Copyright 2016 Koen Vos
 
 % todo:
 % - spectrogram
