@@ -162,7 +162,6 @@ if sum(file_fs)
     config.fs = max(max(file_fs), first_arg_fs * config.fs);
 end
 set(findall(h_fs.Children, 'Label', num2str(config.fs)), 'Checked', 'on');
-write_config;
 for k = 1:num_signals
     if file_fs(k)
         % upsample to highest sampling rate
@@ -192,6 +191,8 @@ update_layout;
 % show signals
 update_selections([], 'reset');
 set_time_range([0, inf], 1);
+
+write_config;
 
 % set figure callbacks
 h_fig.CloseRequestFcn = @window_close_callback;
