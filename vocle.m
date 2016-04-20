@@ -461,7 +461,7 @@ h_fig.WindowButtonUpFcn = '';
         else
             xlabels = [0, 200, 500, 1000, 2000, 5000, 10000, 20000, 40000];
         end
-        xlabels = [xlabels(xlabels < config.fs*0.35), config.fs/2];
+        xlabels = [xlabels(xlabels < config.fs * 0.4), config.fs/2];
         xtick = 1 + lin2perc(xlabels) / f_p_step;
         axis(ax, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
         spec_set_xticks;
@@ -471,6 +471,8 @@ h_fig.WindowButtonUpFcn = '';
         h_spectrum.ResizeFcn = @spec_set_xticks;
 
         function spec_set_xticks(varargin)
+            ax.XLim(1) = max(ax.XLim(1), 1);
+            ax.XLim(2) = min(ax.XLim(2), perc_n_smpls+1e-9);
             ax.Units = 'pixels';
             rat = ax.Position(3) / ax.FontSize;
             ax.Units = 'normalized';
@@ -478,7 +480,7 @@ h_fig.WindowButtonUpFcn = '';
             xlabels_ = xlabels;
             for m = 1:5
                 nTicks = sum(xtick_ > ax.XLim(1) & xtick_ < ax.XLim(2));
-                if 10 * nTicks < rat
+                if 12 * nTicks < rat && nTicks < 6
                     diff = 0.5 * (xlabels_(2:end) - xlabels_(1:end-1));
                     diff10 = 10.^floor(log10(diff));
                     diff = floor(diff ./ diff10) .* diff10;
