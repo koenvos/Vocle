@@ -34,8 +34,6 @@ function vocle(varargin)
 
 % todo:
 % - spectrogram
-% - option to show spectrum on a perceptual frequency scale?
-%   --> do smoothing on warped scale
 % - remember selection, zoom and highlight if main window was already open?
 % - "keep" option to store a signal and add it to the next call to vocle?
 %   --> show in a different color
@@ -66,6 +64,8 @@ playback_dBov = -2;
 playback_cursor_delay_ms = 100;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
+spectrum_perc_fc_Hz = 400;
+spectrum_perc_smoothing = 0.025;
 verbose = 0;
 
 % function-wide variables
@@ -74,11 +74,9 @@ h_spectrum = [];
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
-play_cursor = [];
 player = [];
 play_src = [];
-play_time_range = [];
-playback_start_time = [];
+play_cursor = [];
 
 % load configuration, if possible
 config = [];
@@ -110,6 +108,14 @@ h_fs = uimenu(h_fig, 'Label', 'Sampling &Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
 end
+h_settings = uimenu(h_fig, 'Label', 'Se&ttings');
+h_f_scale = uimenu(h_settings, 'Label', 'Fre&quency Scale');
+uimenu(h_f_scale, 'Label', 'Linear', 'Callback', @freq_scale_callback);
+uimenu(h_f_scale, 'Label', 'Perceptual', 'Callback', @freq_scale_callback);
+if ~isfield(config, 'spectrum_scale')
+    config.spectrum_scale = 'Perceptual';
+end    
+set(findall(h_f_scale.Children, 'Label', config.spectrum_scale), 'Checked', 'on');
 
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
@@ -167,7 +173,7 @@ for k = 1:num_signals
     signal_lengths(k) = size(signals{k}, 1);
     s_ = signals{k}(:);
     signals_negative(k) = min(s_) < 0;
-    signals_ylim(k) = ylim_margin * max(abs(s_));
+    signals_ylim(k) = max(ylim_margin * max(abs(s_)), 1e-9);
 end
 
 % put elements on UI
@@ -199,7 +205,7 @@ h_fig.WindowButtonUpFcn = '';
         h_width = h_fig.Position(3);
         h_height = h_fig.Position(4);
         width = h_width - left_margin - right_margin;
-        height = (h_height - top_margin - bottom_margin - (num_signals-1) * vert_spacing) / num_signals;
+        height = (h_height - top_margin - bottom_margin - (num_signals-1) * vert_spacing) / max(num_signals, 1);
         if height > 0 && width > 0
             for kk = 1:num_signals
                 bottom = bottom_margin + (num_signals - kk) * (height + vert_spacing);
@@ -308,7 +314,7 @@ h_fig.WindowButtonUpFcn = '';
             t1 = min(ceil(time_range_view(2)*config.fs), signal_lengths(kk));
             s = signals{kk};
             s_ = reduce(s(t0:t1, :));
-            t = (t0 + (0:size(s_, 1)-1) * (t1-t0+1) / length(s_)) / config.fs;
+            t = (t0 + (0:size(s_, 1)-1) * (t1-t0+1) / max(length(s_), 1)) / config.fs;
             plot(h_ax{kk}, t, s_, 'ButtonDownFcn', @plot_button_down_callback);
             h_ax{kk}.UserData = kk;
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
@@ -374,33 +380,130 @@ h_fig.WindowButtonUpFcn = '';
             if isempty(s)
                 return;
             end
-            nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
-            d = floor(spectrum_sampling_Hz / (config.fs / nfft));
-            j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
-            w = cos((-j+1:j-1)'/j*pi/2).^2;
-            w = w / sum(w);
-            fx = abs(fft(s, nfft)).^2;
-            % circular convolution
-            fx = ifft(bsxfun(@times, fft(fx), fft(w, nfft)));
-            fx = fx(j:d:nfft/2+j, :);
-            fx = max(fx, 1e-100);
-            fx = 10*log10(fx);
-            f = (0:size(fx, 1)-1) * d * config.fs / nfft;
-            f_ = sort(fx(:));
-            v = f_(ceil(length(f_)/200));  % 0.5 percentile
-            ax = axes('Parent', h_spectrum);
-            plot(ax, f/1e3, fx);
-            axis(ax, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
-            ax.Position = [0.1, 0.13, 0.87, 0.84];
-            xlabel(ax, 'kHz');
-            ylabel(ax, 'dB');
+            if strcmp(get(findall(h_f_scale.Children, 'Label', 'Linear'), 'Checked'), 'on')
+                ax = plot_spec_lin(s);
+            else
+                ax = plot_spec_perc(s);
+            end
+            ax.Position = [0.1, 0.13, 0.86, 0.84];
             ax.FontSize = 9;
             grid(ax, 'on');
-            zoom(h_spectrum, 'on');
+            xlabel(ax, 'kHz');
+            ylabel(ax, 'dB');
             if length(legend_str) > 1
                 legend(ax, legend_str, 'Location', 'best');
             end
         end
+    end
+
+    function ax = plot_spec_lin(s)
+        nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
+        d = floor(spectrum_sampling_Hz / (config.fs / nfft));
+        j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
+        w = cos((-j+1:j-1)'/j*pi/2).^2;
+        w = w / sum(w);
+        fx = abs(fft(s, nfft)).^2;
+        % circular convolution
+        fx = ifft(bsxfun(@times, fft(fx), fft(w, nfft)));
+        fx = fx(j:d:nfft/2+j, :);
+        fx = max(fx, 1e-100);
+        fx = 10*log10(fx);
+        f = (0:size(fx, 1)-1) * d * config.fs / nfft;
+        f_ = sort(fx(:));
+        v = f_(ceil(length(f_)/200));  % 0.5 percentile
+        ax = axes('Parent', h_spectrum);
+        plot(ax, f/1e3, fx);
+        axis(ax, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
+        h_zoom = zoom(h_spectrum);
+        h_zoom.Enable = 'on';
+        h_zoom.ActionPostCallback  = '';
+        h_spectrum.ResizeFcn = '';
+    end
+
+    function ax = plot_spec_perc(s)
+        nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
+        fx = abs(fft(s, nfft)).^2;
+        f_fft_Hz = (0:nfft-1)' / nfft * config.fs;
+        % rotate
+        i = find(f_fft_Hz >= config.fs + perc2lin(-spectrum_perc_smoothing), 1);
+        fx = [fx(i:end, :); fx(1:i-1, :)];
+        f_fft_Hz = [f_fft_Hz(i:end) - config.fs; f_fft_Hz(1:i-1)];
+        % remove unused frequencies
+        i = f_fft_Hz > perc2lin(lin2perc(config.fs/2) + spectrum_perc_smoothing);
+        fx(i, :) = [];
+        f_fft_Hz(i) = [];
+        % weighting
+        [f_fft_p, wght] = lin2perc(f_fft_Hz);
+        f_p_end = lin2perc(config.fs/2);
+        oversmpl_factor = 6;
+        perc_n_smpls = round(oversmpl_factor * f_p_end / spectrum_perc_smoothing);
+        f_p_step = f_p_end / (perc_n_smpls - 1);
+        f_p = (0:perc_n_smpls-1)' * f_p_step;
+        fx_perc = zeros(perc_n_smpls, size(s, 2));
+        for n = 1:perc_n_smpls
+            ftmp = f_fft_p - f_p(n);
+            i = find(abs(ftmp) < spectrum_perc_smoothing);
+            ftmp = ftmp(i);
+            w = cos(ftmp / spectrum_perc_smoothing * pi/2).^2;
+            w = w .* wght(i);
+            w = w / sum(w);
+            fx_perc(n, :) = w' * fx(i, :);
+        end
+        fx_perc = max(fx_perc, 1e-100);
+        fx_perc = 10*log10(fx_perc);
+        f_ = sort(fx_perc(:));
+        v = f_(ceil(length(f_)/200));  % 0.5 percentile
+        ax = axes('Parent', h_spectrum);
+        plot(ax, fx_perc);
+        if config.fs <= 32000
+            xlabels = [0, 200, 500, 1000, 2000, 4000, 8000, 16000];
+        else
+            xlabels = [0, 200, 500, 1000, 2000, 5000, 10000, 20000, 40000];
+        end
+        xlabels = [xlabels(xlabels < config.fs*0.35), config.fs/2];
+        xtick = 1 + lin2perc(xlabels) / f_p_step;
+        axis(ax, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
+        spec_set_xticks;
+        h_zoom = zoom(h_spectrum);
+        h_zoom.Enable = 'on';
+        h_zoom.ActionPostCallback = @spec_set_xticks;
+        h_spectrum.ResizeFcn = @spec_set_xticks;
+
+        function spec_set_xticks(varargin)
+            ax.Units = 'pixels';
+            rat = ax.Position(3) / ax.FontSize;
+            ax.Units = 'normalized';
+            xtick_ = xtick;
+            xlabels_ = xlabels;
+            for m = 1:5
+                nTicks = sum(xtick_ > ax.XLim(1) & xtick_ < ax.XLim(2));
+                if 10 * nTicks < rat
+                    diff = 0.5 * (xlabels_(2:end) - xlabels_(1:end-1));
+                    diff10 = 10.^floor(log10(diff));
+                    diff = floor(diff ./ diff10) .* diff10;
+                    xlabels_ = sort([xlabels_, xlabels_(1:end-1) + diff]);
+                else
+                    break;
+                end
+                xtick_ = 1 + lin2perc(xlabels_) / f_p_step;
+            end
+            ax.XTick = xtick_;
+            ax.XTickLabel = xlabels_ / 1e3;
+        end
+    end
+
+
+    % perceptual frequency scale: perceptual bandwidth is proportional to f_Hz + spectrum_perc_fc_Hz
+    function [p, dp] = lin2perc(f_Hz)
+        p = log(f_Hz + spectrum_perc_fc_Hz) - log(spectrum_perc_fc_Hz);
+        % derivative
+        dp = 1 ./ (f_Hz + spectrum_perc_fc_Hz);
+    end
+
+    function [f_Hz, df_Hz] = perc2lin(p)
+        f_Hz = exp(p + log(spectrum_perc_fc_Hz)) - spectrum_perc_fc_Hz;
+        % derivative
+        df_Hz = f_Hz + spectrum_perc_fc_Hz;
     end
 
     function spectrogram_callback(varargin)
@@ -423,7 +526,7 @@ h_fig.WindowButtonUpFcn = '';
         if win_len > 0
             % windowing
             fade_smpls = min(win_len, smpls / 2);
-            win = sin((1:fade_smpls)'/(fade_smpls+1)*pi/2) .^ 2;
+            win = sin((1:fade_smpls)' / (fade_smpls+1) * pi/2) .^ 2;
             t = 1:fade_smpls;
             s(t, :) = bsxfun(@times, s(t, :), win);
             s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
@@ -447,7 +550,7 @@ h_fig.WindowButtonUpFcn = '';
         if length(play_src) == 1
             % playback from a single axes
             [s, play_time_range] = get_current_signal(play_src, config.fs / 100);
-            s = s / (signals_ylim(play_src) / ylim_margin) * 10^(0.05*playback_dBov);
+            s = s / (signals_ylim(play_src) / ylim_margin) * 10^(0.05 * playback_dBov);
             s = resample(s, playback_fs, config.fs, 50);
             player = audioplayer(s, playback_fs, playback_bits);
             player.TimerFcn = @draw_play_cursor;
@@ -471,33 +574,33 @@ h_fig.WindowButtonUpFcn = '';
             player.StopFcn = @stop_play;
             play(player);
         end
+        
+        function stop_play(varargin)
+            stop(player);
+            delete(play_cursor);
+            play_button.Callback = @start_play;
+            if length(play_src) == 2
+                if play_src(1) > play_src(2)
+                    disp('Playout order: bottom, top');
+                else
+                    disp('Playout order: top, bottom');
+                end
+            end
+            play_src = [];
+            update_selections([], '');
+        end
+
+        function draw_play_cursor(~, ~)
+            t = play_time_range(1) + toc(playback_start_time) - playback_cursor_delay_ms / 1e3;
+            t = min(max(t, play_time_range(1)), play_time_range(2));
+            delete(play_cursor);
+            play_cursor = line([1, 1] * t, [-1, 1] * signals_ylim(play_src), ...
+                'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
+        end
     end
         
-    function stop_play(varargin)
-        stop(player);
-        delete(play_cursor);
-        play_button.Callback = @start_play;
-        if length(play_src) == 2
-            if play_src(1) > play_src(2)
-                disp('Playout order: bottom, top');
-            else
-                disp('Playout order: top, bottom');
-            end
-        end
-        play_src = [];
-        update_selections([], '');
-    end
-
-    function draw_play_cursor(~, ~)
-        t = play_time_range(1) + toc(playback_start_time) - playback_cursor_delay_ms / 1e3;
-        t = min(max(t, play_time_range(1)), play_time_range(2));
-        delete(play_cursor);
-        play_cursor = line([1, 1] * t, [-1, 1] * signals_ylim(play_src), ...
-            'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
-    end
-
     function t = get_mouse_pointer_time
-        frac = (h_fig.CurrentPoint(1) - left_margin) / (h_fig.Position(3) - left_margin - right_margin);
+        frac = (h_fig.CurrentPoint(1) - left_margin) / max(h_fig.Position(3) - left_margin - right_margin, 1);
         t = time_range_view(1) + frac * diff(time_range_view);
     end
 
@@ -688,6 +791,13 @@ h_fig.WindowButtonUpFcn = '';
         spectrum_update;
     end
 
+    function freq_scale_callback(src, ~)
+        set(findall(h_f_scale.Children, 'Checked', 'on'), 'Checked', 'off');
+        src.Checked = 'on';
+        spectrum_update;
+        write_config;
+    end
+
     function window_resize_callback(~, ~)
         update_layout();
     end
@@ -715,6 +825,7 @@ h_fig.WindowButtonUpFcn = '';
         if ishandle(h_spectrum)
             config.spectrum_Position = h_spectrum.Position;
         end
+        config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
         save(config_file, 'config');
     end
 end
