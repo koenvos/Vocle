@@ -55,7 +55,7 @@ figure_color = [0.92, 0.92, 0.92];
 selection_color = [0.95, 0.95, 0.95];
 highlight_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
-ylim_margin = 1.1;
+ylim_margin = 1.05;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 48000;
@@ -131,7 +131,7 @@ highlight_patches = cell(num_signals, 1);
 signals = cell(num_signals, 1);
 signal_lengths = config.fs;  % default, in case of no input args
 signals_negative = zeros(num_signals, 1);
-signals_ylim = zeros(num_signals, 1);
+signals_max = zeros(num_signals, 1);
 file_fs = zeros(num_signals, 1);
 for k = 1:num_signals
     arg = varargin{k+first_arg_fs};
@@ -172,7 +172,7 @@ for k = 1:num_signals
     signal_lengths(k) = size(signals{k}, 1);
     s_ = signals{k}(:);
     signals_negative(k) = min(s_) < 0;
-    signals_ylim(k) = max(ylim_margin * max(abs(s_)), 1e-9);
+    signals_max(k) = max(max(abs(s_)), 1e-9);
 end
 
 % put elements on UI
@@ -323,7 +323,8 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.Layer = 'top';
             h_ax{kk}.FontSize = axes_label_font_size;
             if ~isempty(s_)
-                maxy = 1.1 * max(abs(s_(:)));
+                as_ = abs(s_(:));
+                maxy = ylim_margin * (max(as_) + 0.5 * mean(as_));
                 maxy = max(maxy, 1e-9);
             else
                 maxy = 1;
@@ -381,122 +382,122 @@ h_fig.WindowButtonUpFcn = '';
             if isempty(s)
                 return;
             end
+            ax_spec = axes('Parent', h_spectrum);
             if strcmp(get(findall(h_f_scale.Children, 'Label', 'Linear'), 'Checked'), 'on')
-                ax = plot_spec_lin(s);
+                plot_spec_lin(s);
             else
-                ax = plot_spec_perc(s);
+                plot_spec_perc(s);
             end
-            ax.Position = [0.1, 0.13, 0.86, 0.84];
-            ax.FontSize = 9;
-            grid(ax, 'on');
-            xlabel(ax, 'kHz');
-            ylabel(ax, 'dB');
+            ax_spec.Position = [0.1, 0.13, 0.86, 0.84];
+            ax_spec.FontSize = 9;
+            grid(ax_spec, 'on');
+            xlabel(ax_spec, 'kHz');
+            ylabel(ax_spec, 'dB');
             if length(legend_str) > 1
-                legend(ax, legend_str, 'Location', 'best');
+                legend(ax_spec, legend_str, 'Location', 'best');
             end
         end
-    end
 
-    function ax = plot_spec_lin(s)
-        nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
-        d = floor(spectrum_sampling_Hz / (config.fs / nfft));
-        j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
-        w = cos((-j+1:j-1)'/j*pi/2).^2;
-        w = w / sum(w);
-        fx = abs(fft(s, nfft)).^2;
-        % circular convolution
-        fx = ifft(bsxfun(@times, fft(fx), fft(w, nfft)));
-        fx = fx(j:d:nfft/2+j, :);
-        fx = max(fx, 1e-100);
-        fx = 10*log10(fx);
-        f = (0:size(fx, 1)-1) * d * config.fs / nfft;
-        f_ = sort(fx(:));
-        v = f_(ceil(length(f_)/200));  % 0.5 percentile
-        ax = axes('Parent', h_spectrum);
-        plot(ax, f/1e3, fx);
-        axis(ax, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
-        h_zoom = zoom(h_spectrum);
-        h_zoom.Enable = 'on';
-        h_zoom.ActionPostCallback  = '';
-        h_spectrum.ResizeFcn = '';
-    end
-
-    function ax = plot_spec_perc(s)
-        nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
-        fx = abs(fft(s, nfft)).^2;
-        f_fft_Hz = (0:nfft-1)' / nfft * config.fs;
-        % rotate
-        i = find(f_fft_Hz >= config.fs + perc2lin(-spectrum_perc_smoothing), 1);
-        fx = [fx(i:end, :); fx(1:i-1, :)];
-        f_fft_Hz = [f_fft_Hz(i:end) - config.fs; f_fft_Hz(1:i-1)];
-        % remove unused frequencies
-        i = f_fft_Hz > perc2lin(lin2perc(config.fs/2) + spectrum_perc_smoothing);
-        fx(i, :) = [];
-        f_fft_Hz(i) = [];
-        % weighting
-        [f_fft_p, wght] = lin2perc(f_fft_Hz);
-        f_p_end = lin2perc(config.fs/2);
-        oversmpl_factor = 6;
-        perc_n_smpls = round(oversmpl_factor * f_p_end / spectrum_perc_smoothing);
-        f_p_step = f_p_end / (perc_n_smpls - 1);
-        f_p = (0:perc_n_smpls-1)' * f_p_step;
-        fx_perc = zeros(perc_n_smpls, size(s, 2));
-        for n = 1:perc_n_smpls
-            ftmp = f_fft_p - f_p(n);
-            i = find(abs(ftmp) < spectrum_perc_smoothing);
-            ftmp = ftmp(i);
-            w = cos(ftmp / spectrum_perc_smoothing * pi/2).^2;
-            w = w .* wght(i);
+        function plot_spec_lin(s)
+            nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
+            d = floor(spectrum_sampling_Hz / (config.fs / nfft));
+            j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
+            w = cos((-j+1:j-1)'/j*pi/2).^2;
             w = w / sum(w);
-            fx_perc(n, :) = w' * fx(i, :);
-        end
-        fx_perc = max(fx_perc, 1e-100);
-        fx_perc = 10*log10(fx_perc);
-        f_ = sort(fx_perc(:));
-        v = f_(ceil(length(f_)/200));  % 0.5 percentile
-        ax = axes('Parent', h_spectrum);
-        plot(ax, fx_perc);
-        if config.fs <= 32000
-            xlabels = [0, 200, 500, 1000, 2000, 4000, 8000, 16000];
-        else
-            xlabels = [0, 200, 500, 1000, 2000, 5000, 10000, 20000, 40000];
-        end
-        xlabels = [xlabels(xlabels < config.fs * 0.4), config.fs/2];
-        xtick = 1 + lin2perc(xlabels) / f_p_step;
-        axis(ax, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
-        spec_set_xticks;
-        h_zoom = zoom(h_spectrum);
-        h_zoom.Enable = 'on';
-        h_zoom.ActionPostCallback = @spec_set_xticks;
-        h_spectrum.ResizeFcn = @spec_set_xticks;
-
-        function spec_set_xticks(varargin)
-            ax.XLim(1) = max(ax.XLim(1), 1);
-            ax.XLim(2) = min(ax.XLim(2), perc_n_smpls+1e-9);
-            ax.Units = 'pixels';
-            rat = ax.Position(3) / ax.FontSize;
-            ax.Units = 'normalized';
-            xtick_ = xtick;
-            xlabels_ = xlabels;
-            for m = 1:5
-                nTicks = sum(xtick_ > ax.XLim(1) & xtick_ < ax.XLim(2));
-                if 12 * nTicks < rat && nTicks < 6
-                    diff = 0.5 * (xlabels_(2:end) - xlabels_(1:end-1));
-                    diff10 = 10.^floor(log10(diff));
-                    diff = floor(diff ./ diff10) .* diff10;
-                    xlabels_ = sort([xlabels_, xlabels_(1:end-1) + diff]);
-                else
-                    break;
-                end
-                xtick_ = 1 + lin2perc(xlabels_) / f_p_step;
+            fx = abs(fft(s, nfft)).^2;
+            fx = [fx(end-j+2:end, :); fx(1:nfft/2+j, :)];
+            fxw = zeros(floor(nfft/2/d)+1, size(fx, 2));
+            for m = 1:size(fx, 2)
+                tmp = conv(fx(:, m), w);
+                fxw(:, m) = tmp(2*j-1:d:nfft/2+2*j-1);
             end
-            ax.XTick = xtick_;
-            ax.XTickLabel = xlabels_ / 1e3;
+            fxw = max(fxw, 1e-100);
+            fxw = 10 * log10(fxw);
+            f = (0:size(fxw, 1)-1) * d * config.fs / nfft;
+            plot(ax_spec, f/1e3, fxw);
+            f_ = sort(fxw(:));
+            v = f_(ceil(length(f_)/200));  % 0.5 percentile
+            axis(ax_spec, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
+            h_zoom = zoom(h_spectrum);
+            h_zoom.Enable = 'on';
+            h_zoom.ActionPostCallback  = '';
+            h_spectrum.ResizeFcn = '';
         end
-    end
 
+        function plot_spec_perc(s)
+            nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
+            fx = abs(fft(s, nfft)).^2;
+            f_fft_Hz = (0:nfft-1)' / nfft * config.fs;
+            % rotate
+            i = find(f_fft_Hz >= config.fs + perc2lin(-spectrum_perc_smoothing), 1);
+            fx = [fx(i:end, :); fx(1:i-1, :)];
+            f_fft_Hz = [f_fft_Hz(i:end) - config.fs; f_fft_Hz(1:i-1)];
+            % remove unused frequencies
+            i = f_fft_Hz > perc2lin(lin2perc(config.fs/2) + spectrum_perc_smoothing);
+            fx(i, :) = [];
+            f_fft_Hz(i) = [];
+            % weighting
+            [f_fft_p, wght] = lin2perc(f_fft_Hz);
+            f_p_end = lin2perc(config.fs/2);
+            oversmpl_factor = 6;
+            perc_n_smpls = round(oversmpl_factor * f_p_end / spectrum_perc_smoothing);
+            f_p_step = f_p_end / (perc_n_smpls - 1);
+            f_p = (0:perc_n_smpls-1)' * f_p_step;
+            fxw = zeros(perc_n_smpls, size(s, 2));
+            for n = 1:perc_n_smpls
+                ftmp = f_fft_p - f_p(n);
+                i = find(abs(ftmp) < spectrum_perc_smoothing);
+                ftmp = ftmp(i);
+                w = cos(ftmp / spectrum_perc_smoothing * pi/2).^2;
+                w = w .* wght(i);
+                w = w / sum(w);
+                fxw(n, :) = w' * fx(i, :);
+            end
+            fxw = max(fxw, 1e-100);
+            fxw = 10*log10(fxw);
+            plot(ax_spec, fxw);
+            f_ = sort(fxw(:));
+            v = f_(ceil(length(f_)/200));  % 0.5 percentile
+            axis(ax_spec, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
+            h_zoom = zoom(h_spectrum);
+            h_zoom.Enable = 'on';
+            h_zoom.ActionPostCallback = @spec_set_xticks;
+            h_spectrum.ResizeFcn = @spec_set_xticks;
+            spec_set_xticks;
 
-    % perceptual frequency scale: perceptual bandwidth is proportional to f_Hz + spectrum_perc_fc_Hz
+            function spec_set_xticks(varargin)
+                if config.fs <= 32000
+                    xlabels = [0, 200, 500, 1000, 2000, 4000, 8000, 16000];
+                else
+                    xlabels = [0, 200, 500, 1000, 2000, 5000, 10000, 20000, 40000];
+                end
+                xlabels = [xlabels(xlabels < config.fs * 0.4), config.fs/2];
+                xtick = 1 + lin2perc(xlabels) / f_p_step;
+                ax_spec.XLim(1) = max(ax_spec.XLim(1), 1);
+                ax_spec.XLim(2) = min(ax_spec.XLim(2), perc_n_smpls+1e-9);
+                ax_spec.Units = 'pixels';
+                rat = ax_spec.Position(3) / ax_spec.FontSize;
+                ax_spec.Units = 'normalized';
+                for m = 1:6
+                    nTicks = sum(xtick > ax_spec.XLim(1) & xtick < ax_spec.XLim(2));
+                    if 12 * nTicks < rat && nTicks < 6
+                        diff = 0.5 * (xlabels(2:end) - xlabels(1:end-1));
+                        diff10 = 10.^floor(log10(diff));
+                        diff = floor(diff ./ diff10) .* diff10;
+                        xlabels = sort([xlabels, xlabels(1:end-1) + diff]);
+                    else
+                        break;
+                    end
+                    xtick = 1 + lin2perc(xlabels) / f_p_step;
+                end
+                ax_spec.XTick = xtick;
+                ax_spec.XTickLabel = xlabels / 1e3;
+            end
+        end
+        end
+
+    % perceptual frequency scale: bandwidth is proportional to f_Hz + spectrum_perc_fc_Hz
+    % this means: log scale for frequencies >> spectrum_perc_fc_Hz, linear scale for frequencies << spectrum_perc_fc_Hz
     function [p, dp] = lin2perc(f_Hz)
         p = log(f_Hz + spectrum_perc_fc_Hz) - log(spectrum_perc_fc_Hz);
         % derivative
@@ -553,13 +554,13 @@ h_fig.WindowButtonUpFcn = '';
         if length(play_src) == 1
             % playback from a single axes
             [s, play_time_range] = get_current_signal(play_src, config.fs / 100);
-            s = s / (signals_ylim(play_src) / ylim_margin) * 10^(0.05 * playback_dBov);
+            s = s / signals_max(play_src) * 10^(0.05 * playback_dBov);
             s = resample(s, playback_fs, config.fs, 50);
             player = audioplayer(s, playback_fs, playback_bits);
             player.TimerFcn = @draw_play_cursor;
             player.TimerPeriod = 0.02;
             player.StopFcn = @stop_play;
-            play_cursor = line([1, 1] * play_time_range(1), [-1, 1] * signals_ylim(play_src), ...
+            play_cursor = line([1, 1] * play_time_range(1), [-1, 1] * 2 * signals_max(play_src), ...
                 'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
             playback_start_time = tic;
             play(player);
@@ -569,7 +570,7 @@ h_fig.WindowButtonUpFcn = '';
             ss = [];
             for i = 1:2
                 s = get_current_signal(play_src(i), config.fs / 100);
-                s = s / (signals_ylim(play_src(i)) / ylim_margin) * 10^(0.05*playback_dBov);
+                s = s / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
                 ss = [ss; repmat(s, [1, 3 - size(s, 2)])];  % always stereo
             end
             ss = resample(ss, playback_fs, config.fs, 50);
@@ -597,7 +598,7 @@ h_fig.WindowButtonUpFcn = '';
             t = play_time_range(1) + toc(playback_start_time) - playback_cursor_delay_ms / 1e3;
             t = min(max(t, play_time_range(1)), play_time_range(2));
             delete(play_cursor);
-            play_cursor = line([1, 1] * t, [-1, 1] * signals_ylim(play_src), ...
+            play_cursor = line([1, 1] * t, [-1, 1] * 2 * signals_max(play_src), ...
                 'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
         end
     end
@@ -662,7 +663,7 @@ h_fig.WindowButtonUpFcn = '';
         if ~isempty(highlight_range)
             for kk = 1:num_signals
                 if isempty(highlight_patches{kk})
-                    highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), signals_ylim(kk) * [-1, -1, 1, 1], ...
+                    highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), 2 * signals_max(kk) * [-1, -1, 1, 1], ...
                         highlight_color, 'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
                     uistack(highlight_patches{kk}, 'bottom');
                 else
