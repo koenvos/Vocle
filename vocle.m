@@ -52,7 +52,7 @@ top_margin = 13;
 vert_spacing = 30;
 slider_height = 16;
 figure_color = [0.9, 0.9, 0.9];
-selection_color = [0.93, 0.93, 0.93];
+selection_color = [0.925, 0.925, 0.925];
 highlight_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
@@ -65,7 +65,7 @@ playback_dBov = -2;
 playback_cursor_delay_ms = 100;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
-spectrum_perc_fc_Hz = 400;
+spectrum_perc_fc_Hz = 500;
 spectrum_perc_smoothing = 0.025;
 verbose = 0;
 
@@ -171,9 +171,9 @@ for k = 1:num_signals
         signals{k} = resample(signals{k}, config.fs, varargin{1});
     end
     signal_lengths(k) = size(signals{k}, 1);
-    s_ = signals{k}(:);
-    signals_negative(k) = min(s_) < 0;
-    signals_max(k) = max(max(abs(s_)), 1e-9);
+    stmp = signals{k}(:);
+    signals_negative(k) = min(stmp) < 0;
+    signals_max(k) = max(max(abs(stmp)), 1e-9);
 end
 
 % put elements on UI
@@ -314,17 +314,32 @@ h_fig.WindowButtonUpFcn = '';
         for kk = 1:num_signals
             t0 = max(floor(time_range_view(1)*config.fs), 1);
             t1 = min(ceil(time_range_view(2)*config.fs), signal_lengths(kk));
-            s = signals{kk};
-            s_ = reduce(s(t0:t1, :));
-            t = (t0 + (0:size(s_, 1)-1) * (t1-t0+1) / max(length(s_), 1)) / config.fs;
-            plot(h_ax{kk}, t, s_, 'ButtonDownFcn', @plot_button_down_callback);
+            s_ = signals{kk};
+            s_ = s_(t0:t1, :);
+            max_smpls = 1e4;
+            [L, M] = size(s_);
+            if L > max_smpls
+                d = ceil(2 * L / max_smpls);
+                L2 = ceil(L / d);
+                s_ = [s_; zeros(d * L2 - L, M)];
+                s = zeros(2 * L2, M);
+                for m = 1:M
+                    tmp = reshape(s_(:, m), d, L2);
+                    tmp = [min(tmp); max(tmp)];
+                    s(:, m) = tmp(:);
+                end
+            else
+                s = s_;
+            end
+            t = (t0 + (0:size(s, 1)-1) * (t1-t0+1) / max(length(s), 1)) / config.fs;
+            plot(h_ax{kk}, t, s, 'ButtonDownFcn', @plot_button_down_callback);
             h_ax{kk}.UserData = kk;
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
             h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
             h_ax{kk}.Layer = 'top';
             h_ax{kk}.FontSize = axes_label_font_size;
-            if ~isempty(s_)
-                as_ = abs(s_(:));
+            if ~isempty(s)
+                as_ = abs(s(:));
                 maxy = ylim_margin * (max(as_) + 0.3 * mean(as_));
                 maxy = max(maxy, 1e-9);
             else
@@ -445,15 +460,18 @@ h_fig.WindowButtonUpFcn = '';
             f_p_step = f_p_end / (perc_n_smpls - 1);
             f_p = (0:perc_n_smpls-1)' * f_p_step;
             fxw = zeros(perc_n_smpls, size(s, 2));
+            pwr = 2;  % make the spectrum for sinusoids less frequency dependent (while keeping white noise flat)
+            fx = fx.^pwr;
             for n = 1:perc_n_smpls
                 ftmp = f_fft_p - f_p(n);
                 i = find(abs(ftmp) < spectrum_perc_smoothing);
                 ftmp = ftmp(i);
-                w = cos(ftmp / spectrum_perc_smoothing * pi/2).^2;
+                w = cos(ftmp / spectrum_perc_smoothing * pi/2).^(2 * pwr);
                 w = w .* wght(i);
                 w = w / sum(w);
                 fxw(n, :) = w' * fx(i, :);
             end
+            fxw = fxw.^(1/pwr);
             fxw = max(fxw, 1e-100);
             fxw = 10 * log10(fxw);
             plot(ax_spec, fxw);
@@ -495,7 +513,7 @@ h_fig.WindowButtonUpFcn = '';
                 ax_spec.XTickLabel = xlabels / 1e3;
             end
         end
-        end
+    end
 
     % perceptual frequency scale: bandwidth is proportional to f_Hz + spectrum_perc_fc_Hz
     % this means: log scale for frequencies >> spectrum_perc_fc_Hz, linear scale for frequencies << spectrum_perc_fc_Hz
@@ -833,21 +851,4 @@ h_fig.WindowButtonUpFcn = '';
         config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
         save(config_file, 'config');
     end
-end
-
-% took this from spclab:
-function out = reduce(x)
-N = 1e4;
-[L, chans] = size(x);
-if length(x) > 4*N
-    d = ceil(L/N);
-    N = ceil(L/d);
-    out = zeros(2*N, chans);
-    for c = 1:chans
-        x2=reshape([x(:, c); x(end, c) * ones(N*d-length(x), 1)], d, N);
-        out(:, c)=reshape([max(x2); min(x2)], 2*N, 1);
-    end
-else
-    out=x;
-end
 end
