@@ -51,11 +51,12 @@ bottom_margin = 84;
 top_margin = 13;
 vert_spacing = 30;
 slider_height = 16;
-figure_color = [0.92, 0.92, 0.92];
-selection_color = [0.95, 0.95, 0.95];
+figure_color = [0.9, 0.9, 0.9];
+selection_color = [0.93, 0.93, 0.93];
 highlight_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
-ylim_margin = 1.05;
+max_zoom_smpls = 6;
+ylim_margin = 1.1;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 48000;
@@ -324,7 +325,7 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.FontSize = axes_label_font_size;
             if ~isempty(s_)
                 as_ = abs(s_(:));
-                maxy = ylim_margin * (max(as_) + 0.5 * mean(as_));
+                maxy = ylim_margin * (max(as_) + 0.3 * mean(as_));
                 maxy = max(maxy, 1e-9);
             else
                 maxy = 1;
@@ -454,7 +455,7 @@ h_fig.WindowButtonUpFcn = '';
                 fxw(n, :) = w' * fx(i, :);
             end
             fxw = max(fxw, 1e-100);
-            fxw = 10*log10(fxw);
+            fxw = 10 * log10(fxw);
             plot(ax_spec, fxw);
             f_ = sort(fxw(:));
             v = f_(ceil(length(f_)/200));  % 0.5 percentile
@@ -623,7 +624,7 @@ h_fig.WindowButtonUpFcn = '';
 
     % update axis
     function set_time_range(range, update_slider)
-        min_delta = 10 / config.fs;
+        min_delta = max_zoom_smpls / config.fs;
         max_time = max(signal_lengths) / config.fs;
         time_range_view(1) = min(max(range(1), 0), max_time - min_delta);
         time_range_view(2) = max(min(range(2), max_time), 0 + min_delta);
