@@ -267,11 +267,12 @@ h_fig.WindowButtonUpFcn = '';
             selected_axes = 1;
         else
             switch(type)
-                case {'unique', 'reset'}
+                case 'reset'
                     selected_axes = zeros(num_signals, 1);
+                case 1
                     selected_axes(ind) = 1;
-                case 'add'
-                    selected_axes(ind) = 1;
+                case 0
+                    selected_axes(ind) = 0;
                 case 'toggle'
                     selected_axes(ind) = 1 - selected_axes(ind);
             end
@@ -706,9 +707,9 @@ h_fig.WindowButtonUpFcn = '';
         axes_button_down_callback(gca, []);
     end
 
-    last_clicked_axes = [];
+    last_action_was_highlight = 0;
     last_button_down = '';
-    highlight_start = [];
+    last_clicked_axes = [];
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         if verbose
@@ -719,6 +720,9 @@ h_fig.WindowButtonUpFcn = '';
         switch(h_fig.SelectionType)
             case 'normal'
                 % left mouse: start highlight, move indicator to current axes, setup mouse callbacks
+                selection_state_before = selected_axes(n_axes);
+                time_mouse_down = tic;
+                update_selections(n_axes, 1);
                 highlight_start = get_mouse_pointer_time;
                 text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                 h_fig.WindowButtonUpFcn = @button_up_callback;
@@ -757,34 +761,32 @@ h_fig.WindowButtonUpFcn = '';
             last_button_down = h_fig.SelectionType;
         end
         last_clicked_axes = n_axes;
-    end
 
-    last_action_was_highlight = 0;
-    function button_up_callback(~, ~)
-        h_fig.WindowButtonUpFcn = '';
-        h_fig.WindowButtonMotionFcn = '';
-        text_segment.Visible = 'off';
-        if last_action_was_highlight
+        function button_up_callback(~, ~)
+            h_fig.WindowButtonUpFcn = '';
+            h_fig.WindowButtonMotionFcn = '';
+            text_segment.Visible = 'off';
+            if last_action_was_highlight
+                highlight_range = [highlight_start, get_mouse_pointer_time];
+            elseif toc(time_mouse_down) < 0.3
+                update_selections(last_clicked_axes, 1 - selection_state_before);
+            end
+            last_action_was_highlight = 0;
+        end
+
+        function button_motion_callback(~, ~)
             highlight_range = [highlight_start, get_mouse_pointer_time];
-            update_selections(last_clicked_axes, 'add');
-        else
-            update_selections(last_clicked_axes, 'toggle');
+            delta = abs(diff(highlight_range));
+            if delta < 1
+                str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(round(delta * config.fs)), ')'];
+            else
+                str = [num2str(delta, '%.3f'), ' sec'];
+            end
+            text_segment.String = str;
+            text_segment.Visible = 'on';
+            draw_highlights;
+            last_action_was_highlight = 1;
         end
-        last_action_was_highlight = 0;
-    end
-
-    function button_motion_callback(~, ~)
-        highlight_range = [highlight_start, get_mouse_pointer_time];
-        delta = abs(diff(highlight_range));
-        if delta < 1
-            str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(round(delta * config.fs)), ')'];
-        else
-            str = [num2str(delta, '%.3f'), ' sec'];
-        end
-        text_segment.String = str;
-        text_segment.Visible = 'on';
-        draw_highlights;
-        last_action_was_highlight = 1;
     end
 
     function window_scroll_callback(~, evt)
