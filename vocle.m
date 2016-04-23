@@ -768,6 +768,7 @@ h_fig.WindowButtonUpFcn = '';
             text_segment.Visible = 'off';
             if last_action_was_highlight
                 highlight_range = [highlight_start, get_mouse_pointer_time];
+                update_selections([], '');
             elseif toc(time_mouse_down) < 0.3
                 update_selections(last_clicked_axes, 1 - selection_state_before);
             end
