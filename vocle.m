@@ -63,6 +63,7 @@ playback_fs = 48000;
 playback_bits = 24;
 playback_dBov = -2;
 playback_cursor_delay_ms = 100;
+playback_silence_betwee_A_B_ms = 250;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
 spectrum_perc_fc_Hz = 500;
@@ -587,12 +588,13 @@ h_fig.WindowButtonUpFcn = '';
         elseif length(play_src) == 2
             % A/B test
             play_src = play_src(randperm(2));
-            ss = [];
+            s = {};
             for i = 1:2
-                s = get_current_signal(play_src(i), config.fs / 100);
-                s = s / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
-                ss = [ss; repmat(s, [1, 3 - size(s, 2)])];  % always stereo
+                s{i} = get_current_signal(play_src(i), config.fs / 100);
+                s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
+                s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
             end
+            ss = [s{1}; zeros(round(config.fs/1e3 * playback_silence_betwee_A_B_ms), 2); s{2}]; 
             ss = resample(ss, playback_fs, config.fs, 50);
             player = audioplayer(ss, playback_fs, playback_bits);
             player.StopFcn = @stop_play;
