@@ -45,15 +45,15 @@ function vocle(varargin)
 fig_no = 9372;
 spectrum_no = fig_no+1;
 axes_label_font_size = 8;
-left_margin = 43;
+left_margin = 42;
 right_margin = 22;
 bottom_margin = 80;
-bottom_margin_spec = 42;
+bottom_margin_spec = 38;
 top_margin = 10;
 vert_spacing = 23;
 slider_height = 16;
 figure_color = [0.9, 0.9, 0.9];
-selection_color = [0.925, 0.925, 0.925];
+selection_color = [0.93, 0.93, 0.93];
 highlight_color = [0.7, 0.8, 0.9];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
@@ -407,7 +407,7 @@ h_fig.WindowButtonUpFcn = '';
             else
                 plot_spec_perc(s);
             end
-            ax_spec.FontSize = 9;
+            ax_spec.FontSize = axes_label_font_size;
             grid(ax_spec, 'on');
             xlabel(ax_spec, 'kHz');
             ylabel(ax_spec, 'dB');
@@ -524,7 +524,9 @@ h_fig.WindowButtonUpFcn = '';
             h_height = h_spectrum.Position(4);
             width = h_width - left_margin - right_margin;
             height = h_height - top_margin - bottom_margin_spec;
-            ax_spec.Position = [left_margin, bottom_margin_spec, width, height];
+            if height > 0 && width > 0
+                ax_spec.Position = [left_margin, bottom_margin_spec, width, height];
+            end
             ax_spec.Units = 'normalized';
         end
     end
