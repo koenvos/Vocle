@@ -26,16 +26,16 @@ function vocle(varargin)
 %   - Stereo support
 %   - Possible to stop playback
 %   - Scroll wheel zooming
-%   - Use sampling rate info from input files
+%   - Use sampling rate info from input files, if available
 %   - Remember window locations and sampling rate
-%   - Reimplement some spclab features broken by changes in Matlab
+%   - Fix some spclab features that were broken by changes in Matlab
 
 %  Copyright 2016 Koen Vos
 
 % todo:
 % - spectrogram
 % - remember selection, zoom and highlight if main window was already open?
-% - "keep" option to store a signal and add it to the next call to vocle?
+% - "keep" option, to store a signal and add it to the next call to vocle?
 %   --> show in a different color
 %   --> option to remove signals
 % - auto align function?
@@ -45,11 +45,12 @@ function vocle(varargin)
 fig_no = 9372;
 spectrum_no = fig_no+1;
 axes_label_font_size = 8;
-left_margin = 42;
+left_margin = 43;
 right_margin = 22;
-bottom_margin = 84;
-top_margin = 13;
-vert_spacing = 30;
+bottom_margin = 80;
+bottom_margin_spec = 42;
+top_margin = 10;
+vert_spacing = 23;
 slider_height = 16;
 figure_color = [0.9, 0.9, 0.9];
 selection_color = [0.925, 0.925, 0.925];
@@ -406,7 +407,6 @@ h_fig.WindowButtonUpFcn = '';
             else
                 plot_spec_perc(s);
             end
-            ax_spec.Position = [0.1, 0.13, 0.86, 0.84];
             ax_spec.FontSize = 9;
             grid(ax_spec, 'on');
             xlabel(ax_spec, 'kHz');
@@ -439,7 +439,8 @@ h_fig.WindowButtonUpFcn = '';
             h_zoom = zoom(h_spectrum);
             h_zoom.Enable = 'on';
             h_zoom.ActionPostCallback  = '';
-            h_spectrum.ResizeFcn = '';
+            h_spectrum.ResizeFcn = @spec_place_axes;
+            spec_place_axes;
         end
 
         function plot_spec_perc(s)
@@ -513,7 +514,18 @@ h_fig.WindowButtonUpFcn = '';
                 end
                 ax_spec.XTick = xtick;
                 ax_spec.XTickLabel = xlabels / 1e3;
+                spec_place_axes;
             end
+        end
+        
+        function spec_place_axes(varargin)
+            ax_spec.Units = 'pixels';
+            h_width = h_spectrum.Position(3);
+            h_height = h_spectrum.Position(4);
+            width = h_width - left_margin - right_margin;
+            height = h_height - top_margin - bottom_margin_spec;
+            ax_spec.Position = [left_margin, bottom_margin_spec, width, height];
+            ax_spec.Units = 'normalized';
         end
     end
 
