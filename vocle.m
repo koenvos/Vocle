@@ -11,7 +11,7 @@ function vocle(varargin)
 % 
 %  Navigation
 %     Left mouse:                Toggle axes selection
-%     Left mouse + drag:         Hhighlight segment
+%     Left mouse + drag:         Highlight segment
 %     Right mouse:
 %      - if highlight exists:    Zoom to highlighted segment; remove highlight
 %      - otherwise:              Zoom out
@@ -28,6 +28,8 @@ function vocle(varargin)
 %   - Scroll wheel zooming
 %   - Use sampling rate info from input files, if available
 %   - Remember window locations and sampling rate
+%   - Auto update spectrum when highlighting a new segment
+%   - Option to display spectrum on perceptual frequency scale
 %   - Fix some spclab features that were broken by changes in Matlab
 
 %  Copyright 2016 Koen Vos
