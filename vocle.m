@@ -16,7 +16,7 @@ function vocle(varargin)
 %      - if highlight exists:    Zoom to highlighted segment; remove highlight
 %      - otherwise:              Zoom out
 %     Double click left:         Zoom out full
-%     Shift + left/right:        Play window or highlighted segment
+%     Shift + left/right:        Play
 %     Mouse click outside axes:  Remove highlight
 %     Mouse scroll:              Zoom in or out
 %
@@ -31,6 +31,8 @@ function vocle(varargin)
 %   - Auto update spectrum when highlighting a new segment
 %   - Option to display spectrum on perceptual frequency scale
 %   - Fix some spclab features that were broken by changes in Matlab
+%
+%  Vocle requires Matlab 2014b or newer.
 
 %  Copyright 2016 Koen Vos
 
@@ -42,6 +44,11 @@ function vocle(varargin)
 %   --> option to remove signals
 % - auto align function?
 % - Info menu item
+
+if verLessThan('matlab', 'R2014b')
+    disp('Sorry, your Matlab version is too old. Vocle requires at least R2014b..')
+    return;
+end
 
 % settings
 fig_no = 9372;
@@ -343,6 +350,7 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
             h_ax{kk}.Layer = 'top';
             h_ax{kk}.FontSize = axes_label_font_size;
+            h_ax{kk}.TickLength(1) = 0.006;
             if ~isempty(s)
                 as_ = abs(s(:));
                 maxy = ylim_margin * (max(as_) + 0.3 * mean(as_));
@@ -865,11 +873,15 @@ h_fig.WindowButtonUpFcn = '';
         if verbose
             disp('save config');
         end
-        config.Position = h_fig.Position;
+        if ishandle(h_fig)
+            config.Position = h_fig.Position;
+        end
         if ishandle(h_spectrum)
             config.spectrum_Position = h_spectrum.Position;
         end
-        config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
+        if ishandle(h_f_scale)
+            config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
+        end
         save(config_file, 'config');
     end
 end
