@@ -855,12 +855,13 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     function window_close_callback(src, ~)
+        write_config();
         if src.Number == fig_no
+            % when closing main window, also close secondary windows
             if ishandle(h_spectrum)
                 close(h_spectrum);
             end
         end
-        write_config();
         closereq;
     end
 
