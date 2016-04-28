@@ -88,9 +88,9 @@ time_range_view = [];
 highlight_range = [];
 player = [];
 play_src = [];
-play_cursor = [];
+play_cursors = {};
 
-% load configuration, if possible
+% try to load configuration
 config = [];
 config_file = [which('vocle'), 'at'];
 if exist(config_file, 'file')
@@ -114,8 +114,8 @@ h_file = uimenu(h_fig, 'Label', '&File');
 uimenu(h_file, 'Label', '&Open', 'Callback', @open_file_callback);
 h_save = uimenu(h_file, 'Label', 'Save &As..', 'Callback', @save_file_callback);
 h_spec_menu = uimenu(h_fig, 'Label', '&Spectrum', 'Callback', @spectrum_callback);
-h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
-h_specgram_menu.Enable = 'off';
+%h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
+%h_specgram_menu.Enable = 'off';
 h_fs = uimenu(h_fig, 'Label', 'Sampling &Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
@@ -187,7 +187,7 @@ for k = 1:num_signals
     signals_max(k) = max(max(abs(stmp)), 1e-9);
 end
 
-% put elements on UI
+% add elements to UI
 h_ax = cell(num_signals, 1);
 for k = 1:num_signals
     h_ax{k} = axes;
@@ -426,6 +426,7 @@ h_fig.WindowButtonUpFcn = '';
             end
         end
 
+        % spectrum on linear scale
         function plot_spec_lin(s)
             nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
             d = floor(spectrum_sampling_Hz / (config.fs / nfft));
@@ -453,6 +454,7 @@ h_fig.WindowButtonUpFcn = '';
             spec_place_axes;
         end
 
+        % spectrum on perceptual scale
         function plot_spec_perc(s)
             nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
             fx = abs(fft(s, nfft)).^2;
@@ -542,7 +544,7 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     % perceptual frequency scale: bandwidth is proportional to f_Hz + spectrum_perc_fc_Hz
-    % this means: log scale for frequencies >> spectrum_perc_fc_Hz, linear scale for frequencies << spectrum_perc_fc_Hz
+    % this means: log scale for frequencies >> spectrum_perc_fc_Hz; linear scale for frequencies << spectrum_perc_fc_Hz
     function [p, dp] = lin2perc(f_Hz)
         p = log(f_Hz + spectrum_perc_fc_Hz) - log(spectrum_perc_fc_Hz);
         % derivative
@@ -588,7 +590,9 @@ h_fig.WindowButtonUpFcn = '';
         if ~isempty(player)
             player.StopFcn = '';  % prevent that stop_play resets play_src
             stop(player);
-            delete(play_cursor);
+            for m = 1:length(play_cursors)
+                delete(play_cursors{m});
+            end
         end
         if isempty(play_src)
             play_src = find(selected_axes);
@@ -601,33 +605,34 @@ h_fig.WindowButtonUpFcn = '';
             [s, play_time_range] = get_current_signal(play_src, config.fs / 100);
             s = s / signals_max(play_src) * 10^(0.05 * playback_dBov);
             s = resample(s, playback_fs, config.fs, 50);
-            player = audioplayer(s, playback_fs, playback_bits);
-            player.TimerFcn = @draw_play_cursor;
-            player.TimerPeriod = 0.02;
-            player.StopFcn = @stop_play;
-            play_cursor = line([1, 1] * play_time_range(1), [-1, 1] * 2 * signals_max(play_src), ...
-                'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
-            playback_start_time = tic;
-            play(player);
         elseif length(play_src) == 2
             % A/B test
             play_src = play_src(randperm(2));
             s = {};
+            play_time_range = 0;
             for i = 1:2
-                s{i} = get_current_signal(play_src(i), config.fs / 100);
+                [s{i}, tr] = get_current_signal(play_src(i), config.fs / 100);
+                play_time_range = play_time_range + tr;
                 s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
                 s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
             end
-            ss = [s{1}; zeros(round(config.fs/1e3 * playback_silence_betwee_A_B_ms), 2); s{2}]; 
-            ss = resample(ss, playback_fs, config.fs, 50);
-            player = audioplayer(ss, playback_fs, playback_bits);
-            player.StopFcn = @stop_play;
-            play(player);
+            play_time_range = play_time_range / 2;
+            s = [s{1}; zeros(round(config.fs/1e3 * playback_silence_betwee_A_B_ms), 2); s{2}]; 
+            s = resample(s, playback_fs, config.fs, 50);
         end
+        player = audioplayer(s, playback_fs, playback_bits);
+        player.TimerFcn = @draw_play_cursors;
+        player.TimerPeriod = 0.02;
+        playback_start_time = tic;
+        draw_play_cursors;
+        player.StopFcn = @stop_play;
+        play(player);
         
         function stop_play(varargin)
             stop(player);
-            delete(play_cursor);
+            for mm = 1:length(play_cursors)
+                delete(play_cursors{mm});
+            end
             play_button.Callback = @start_play;
             if length(play_src) == 2
                 if play_src(1) > play_src(2)
@@ -640,12 +645,19 @@ h_fig.WindowButtonUpFcn = '';
             update_selections([], '');
         end
 
-        function draw_play_cursor(~, ~)
+        function draw_play_cursors(~, ~)
             t = play_time_range(1) + toc(playback_start_time) - playback_cursor_delay_ms / 1e3;
+            if length(play_src) == 2 && t > play_time_range(2) + 0.5 * playback_silence_betwee_A_B_ms/1e3
+                t = t - diff(play_time_range) - playback_silence_betwee_A_B_ms/1e3;
+            end
             t = min(max(t, play_time_range(1)), play_time_range(2));
-            delete(play_cursor);
-            play_cursor = line([1, 1] * t, [-1, 1] * 2 * signals_max(play_src), ...
-                'Parent', h_ax{play_src}, 'Color', 'k', 'HitTest', 'off');
+            for mm = 1:length(play_cursors)
+                delete(play_cursors{mm});
+            end
+            for mm = 1:length(play_src)
+                 play_cursors{mm} = line([1, 1] * t, [-1, 1] * 2 * signals_max(play_src(mm)), ...
+                    'Parent', h_ax{play_src(mm)}, 'Color', 'k', 'HitTest', 'off');
+            end
         end
     end
         
@@ -667,7 +679,7 @@ h_fig.WindowButtonUpFcn = '';
         set_time_range([t1 - interval, t1], 1);
     end
 
-    % update axis
+    % update visible time range
     function set_time_range(range, update_slider)
         min_delta = max_zoom_smpls / config.fs;
         max_time = max(signal_lengths) / config.fs;
