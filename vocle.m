@@ -114,7 +114,9 @@ h_fig.ToolBar = 'none';
 h_fig.MenuBar = 'none';
 h_file = uimenu(h_fig, 'Label', '&File');
 uimenu(h_file, 'Label', '&Open', 'Callback', @open_file_callback);
-h_save = uimenu(h_file, 'Label', 'Save &As..', 'Callback', @save_file_callback);
+h_save = uimenu(h_file, 'Label', 'Save Signal', 'Callback', @save_file_callback);
+% the following line uses the undocumented function filemenufcn()... might break
+uimenu(h_file, 'Label', 'Save Figure', 'Callback', 'filemenufcn(gcbf, ''FileSaveAs'')');
 h_spec_menu = uimenu(h_fig, 'Label', '&Spectrum', 'Callback', @spectrum_callback);
 h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
 h_fs = uimenu(h_fig, 'Label', 'Sampling &Rate');
@@ -357,7 +359,7 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.TickLength(1) = 0.006;
             if ~isempty(s)
                 as_ = abs(s(:));
-                maxy = ylim_margin * (max(as_) + 0.3 * mean(as_));
+                maxy = ylim_margin * (max(as_) + 0.1 * mean(as_));
                 maxy = max(maxy, 1e-9);
             else
                 maxy = 1;
@@ -449,7 +451,7 @@ h_fig.WindowButtonUpFcn = '';
             f = (0:size(fxw, 1)-1) * d * config.fs / nfft;
             plot(ax_spec, f/1e3, fxw);
             f_ = sort(fxw(:));
-            v = f_(ceil(length(f_)/200));  % 0.5 percentile
+            v = f_(ceil(length(f_)/100));  % 1 percentile
             axis(ax_spec, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(h_spectrum);
             h_zoom.Enable = 'on';
@@ -495,7 +497,7 @@ h_fig.WindowButtonUpFcn = '';
             fxw = 10 * log10(fxw);
             plot(ax_spec, fxw);
             f_ = sort(fxw(:));
-            v = f_(ceil(length(f_)/200));  % 0.5 percentile
+            v = f_(ceil(length(f_)/100));  % 1 percentile
             axis(ax_spec, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(h_spectrum);
             h_zoom.Enable = 'on';
@@ -888,7 +890,12 @@ h_fig.WindowButtonUpFcn = '';
             highlight_range = [highlight_start, get_mouse_pointer_time];
             delta = abs(diff(highlight_range));
             if delta < 1
-                str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(round(delta * config.fs)), ')'];
+                smpls = delta * config.fs;
+                if smpls < 1000
+                    str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(smpls, '%.1f'), ')'];
+                else
+                    str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(smpls, '%.0f'), ')'];
+                end
             else
                 str = [num2str(delta, '%.3f'), ' sec'];
             end
