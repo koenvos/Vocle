@@ -53,6 +53,7 @@ end
 % settings
 fig_no = 9372;
 spectrum_no = fig_no+1;
+specgram_no = fig_no+2;
 axes_label_font_size = 8;
 left_margin = 42;
 right_margin = 22;
@@ -63,7 +64,7 @@ vert_spacing = 23;
 slider_height = 16;
 figure_color = [0.9, 0.9, 0.9];
 selection_color = [0.93, 0.93, 0.93];
-highlight_color = [0.7, 0.8, 0.9];
+highlight_color = [0.73, 0.82, 0.91];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
 ylim_margin = 1.1;
@@ -71,7 +72,7 @@ file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 48000;
 playback_bits = 24;
-playback_dBov = -2;
+playback_dBov = -1;
 playback_cursor_delay_ms = 100;
 playback_silence_betwee_A_B_ms = 250;
 spectrum_sampling_Hz = 2;
@@ -83,6 +84,7 @@ verbose = 0;
 % function-wide variables
 h_ax = [];
 h_spectrum = [];
+h_specgram = {};
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
@@ -114,8 +116,7 @@ h_file = uimenu(h_fig, 'Label', '&File');
 uimenu(h_file, 'Label', '&Open', 'Callback', @open_file_callback);
 h_save = uimenu(h_file, 'Label', 'Save &As..', 'Callback', @save_file_callback);
 h_spec_menu = uimenu(h_fig, 'Label', '&Spectrum', 'Callback', @spectrum_callback);
-%h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
-%h_specgram_menu.Enable = 'off';
+h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
 h_fs = uimenu(h_fig, 'Label', 'Sampling &Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
@@ -306,8 +307,10 @@ h_fig.WindowButtonUpFcn = '';
         end
         if sum(selected_axes) == 0
             h_spec_menu.Enable = 'off';
+            h_specgram_menu.Enable = 'off';
         else
             h_spec_menu.Enable = 'on';
+            h_specgram_menu.Enable = 'on';
         end
         if sum(selected_axes) == 1
             h_save.Enable = 'on';
@@ -316,6 +319,7 @@ h_fig.WindowButtonUpFcn = '';
         end
         if diff(highlight_range)
             spectrum_update;
+            spectrogram_callback;
         end
     end
 
@@ -558,7 +562,75 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     function spectrogram_callback(varargin)
-        disp('spectrogram is not yet implemented..');
+        % see if any spectrogram windows are open
+        specgram_open = 0;
+        for i = 1:length(h_specgram)
+            if ishandle(h_specgram{i})
+                specgram_open = 1;
+                break;
+            end
+        end
+        if isempty(varargin) && ~specgram_open
+            return;
+        end
+        kk = find(selected_axes);
+        for i = 1:length(kk)
+            % open figure and use position from config file
+            if ~fig_exist(specgram_no+i) && isfield(config, 'specgram_Position') && ...
+                    length(config.specgram_Position) >= i
+                h_specgram{i} = figure(specgram_no+i);
+                h_specgram{i}.Position = config.specgram_Position{i};
+            else
+                h_specgram{i} = figure(specgram_no+i);
+            end
+            h_specgram{i}.CloseRequestFcn = @window_close_callback;
+            h_specgram{i}.NumberTitle = 'off';
+            h_specgram{i}.MenuBar = 'none';
+            h_specgram{i}.ToolBar = 'figure';
+            %h_specgram{i}.Name = ' Vocle Spectrogram';
+            h_specgram{i}.Name = [' Vocle Spectrogram - Signal ', num2str(kk(i))];
+            h_specgram{i}.Color = figure_color;
+            clf(h_specgram{i});
+            ax = axes('Parent', h_specgram{i});
+            
+            win_len_ms = 32;
+            step_ms = 1;
+            [s, time_range] = get_current_signal(kk(i), 0);
+            % take average between all channels (for now..)
+            s = mean(s, 2);
+            win_len = win_len_ms * config.fs / 1e3;
+            step = step_ms * config.fs / 1e3;
+            N = ceil((length(s) - win_len + 1) / step);
+            if N > 0
+                nfft = 2^nextpow2(win_len * 5);
+                win = sin((1:win_len)' / (win_len+1) * pi) .^ 2;
+                F = zeros(nfft/2+1, N);
+                for n = 1:N
+                    t = (1:win_len) + (n-1) * step;
+                    f = fft(s(t) .* win, nfft);
+                    F(:, n) = abs(f(1:nfft/2+1));
+                end
+                F = max(F, 1e-9 * max(F(:)));
+                F = 20 * log10(F);
+                t = time_range(1) + win_len_ms/2e3 + (-0.5:N) * step_ms/1e3;
+                fr = (-0.5:nfft/2+1)/nfft * config.fs;
+                F = [[F; zeros(1, N)], zeros(length(fr), 1)];
+                pcolor(ax, t, fr/1e3, F);
+                ax.XLim = [t(1), t(end)];
+                ylabel('kHz');
+                shading 'flat';
+                colormap(ax, 'default')
+                c = colorbar;
+                c.Label.String = 'dB';
+                %title(['Signal ', num2str(kk)]);
+                ax.FontSize = axes_label_font_size;
+            end
+        end
+        for i = length(kk)+1:length(h_specgram)
+            if ishandle(h_specgram{i})
+                close(h_specgram{i});
+            end
+        end
     end
 
     function [s, time_range] = get_current_signal(kk, win_len)
@@ -612,11 +684,10 @@ h_fig.WindowButtonUpFcn = '';
             play_time_range = 0;
             for i = 1:2
                 [s{i}, tr] = get_current_signal(play_src(i), config.fs / 100);
-                play_time_range = play_time_range + tr;
+                play_time_range = play_time_range + tr / 2;
                 s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
                 s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
             end
-            play_time_range = play_time_range / 2;
             s = [s{1}; zeros(round(config.fs/1e3 * playback_silence_betwee_A_B_ms), 2); s{2}]; 
             s = resample(s, playback_fs, config.fs, 50);
         end
@@ -853,6 +924,7 @@ h_fig.WindowButtonUpFcn = '';
         highlight_range = highlight_range * fs_old / config.fs;
         set_time_range(time_range_view * fs_old / config.fs, 1);
         spectrum_update;
+        spectrogram_callback;
     end
 
     function freq_scale_callback(src, ~)
@@ -872,6 +944,11 @@ h_fig.WindowButtonUpFcn = '';
             % when closing main window, also close secondary windows
             if ishandle(h_spectrum)
                 close(h_spectrum);
+            end
+            for i = 1:length(h_specgram)
+                if ishandle(h_specgram{i})
+                    close(h_specgram{i});
+                end
             end
         end
         closereq;
@@ -894,6 +971,11 @@ h_fig.WindowButtonUpFcn = '';
         end
         if ishandle(h_f_scale)
             config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
+        end
+        for i = 1:length(h_specgram)
+            if ishandle(h_specgram{i})
+                config.specgram_Position{i} = h_specgram{i}.Position;
+            end
         end
         save(config_file, 'config');
     end
