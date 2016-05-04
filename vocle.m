@@ -283,29 +283,12 @@ h_fig.WindowButtonUpFcn = '';
             switch(type)
                 case 'reset'
                     selected_axes = zeros(num_signals, 1);
-                case 1
-                    selected_axes(ind) = 1;
-                case 0
-                    selected_axes(ind) = 0;
                 case 'toggle'
                     selected_axes(ind) = 1 - selected_axes(ind);
             end
         end
         for kk = 1:num_signals
             h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
-        end
-        if ~isempty(player) && player.isplaying  % don't disable during playback
-            play_button.String = 'Stop';
-            play_button.Enable = 'on';
-        elseif sum(selected_axes) == 1
-            play_button.String = 'Play';
-            play_button.Enable = 'on';
-        elseif sum(selected_axes) == 2
-            play_button.String = 'A/B';
-            play_button.Enable = 'on';
-        else
-            play_button.String = 'Play';
-            play_button.Enable = 'off';
         end
         if sum(selected_axes) == 0
             h_spec_menu.Enable = 'off';
@@ -319,11 +302,24 @@ h_fig.WindowButtonUpFcn = '';
         else
             h_save.Enable = 'off';
         end
-        if diff(highlight_range)
-            spectrum_update;
-            spectrogram_callback;
-        end
+        update_play_button;
     end
+
+    function update_play_button
+        if ~isempty(player) && player.isplaying  % don't disable during playback
+            play_button.String = 'Stop';
+            play_button.Enable = 'on';
+        elseif sum(selected_axes) == 1
+            play_button.String = 'Play';
+            play_button.Enable = 'on';
+        elseif sum(selected_axes) == 2
+            play_button.String = 'A/B';
+            play_button.Enable = 'on';
+        else
+            play_button.String = 'Play';
+            play_button.Enable = 'off';
+        end
+    end        
 
     % plot signals
     function plot_signals
@@ -589,15 +585,18 @@ h_fig.WindowButtonUpFcn = '';
             h_specgram{i}.NumberTitle = 'off';
             h_specgram{i}.MenuBar = 'none';
             h_specgram{i}.ToolBar = 'figure';
-            %h_specgram{i}.Name = ' Vocle Spectrogram';
             h_specgram{i}.Name = [' Vocle Spectrogram - Signal ', num2str(kk(i))];
             h_specgram{i}.Color = figure_color;
             clf(h_specgram{i});
-            ax = axes('Parent', h_specgram{i});
+            h_zoom = zoom(h_specgram{i});
+            h_zoom.Enable = 'on';
+            h_zoom.ActionPostCallback  = '';
+            h_specgram{i}.ResizeFcn = @specgram_place_axes;
             
-            win_len_ms = 32;
-            step_ms = 1;
-            [s, time_range] = get_current_signal(kk(i), 0);
+            ax(i) = axes('Parent', h_specgram{i});
+            win_len_ms = 50;
+            step_ms = 2;
+            [s, time_range] = get_current_signal(kk(i), 0, win_len_ms / 2);
             % take average between all channels (for now..)
             s = mean(s, 2);
             win_len = win_len_ms * config.fs / 1e3;
@@ -605,37 +604,68 @@ h_fig.WindowButtonUpFcn = '';
             N = ceil((length(s) - win_len + 1) / step);
             if N > 0
                 nfft = 2^nextpow2(win_len * 5);
-                win = sin((1:win_len)' / (win_len+1) * pi) .^ 2;
+                win = sin((1:win_len/4)' / (win_len+1) * 2*pi) .^ 2;
+                win = [win; ones(win_len/2, 1); win(end:-1:1)];
                 F = zeros(nfft/2+1, N);
                 for n = 1:N
                     t = (1:win_len) + (n-1) * step;
                     f = fft(s(t) .* win, nfft);
                     F(:, n) = abs(f(1:nfft/2+1));
                 end
-                F = max(F, 1e-9 * max(F(:)));
+                F = max(F, 1e-5 * max(F(:)));
                 F = 20 * log10(F);
                 t = time_range(1) + win_len_ms/2e3 + (-0.5:N) * step_ms/1e3;
                 fr = (-0.5:nfft/2+1)/nfft * config.fs;
                 F = [[F; zeros(1, N)], zeros(length(fr), 1)];
-                pcolor(ax, t, fr/1e3, F);
-                ax.XLim = [t(1), t(end)];
+                pcolor(ax(i), t, fr/1e3, F);
+                ax(i).XLim = [t(1), t(end)];
                 ylabel('kHz');
                 shading 'flat';
-                colormap(ax, 'default')
+                colormap(ax(i), 'default')
                 c = colorbar;
                 c.Label.String = 'dB';
-                %title(['Signal ', num2str(kk)]);
-                ax.FontSize = axes_label_font_size;
+                ax(i).FontSize = axes_label_font_size;
+                specgram_place_axes(h_specgram{i});
             end
         end
+        linkaxes(ax);
         for i = length(kk)+1:length(h_specgram)
             if ishandle(h_specgram{i})
                 close(h_specgram{i});
             end
         end
+        if isempty(varargin)
+            figure(h_fig);
+        end
     end
 
-    function [s, time_range] = get_current_signal(kk, win_len)
+    function specgram_place_axes(varargin)
+        if nargin > 1
+            % to handle a bug in colorbar position when resizing a spectrogram 
+            % window, wait for matlab to update layout first
+            pause(0.1);
+        end
+        hf = varargin{1};
+        h_width = hf.Position(3);
+        h_height = hf.Position(4);
+        ax = findall(hf.Children, 'Type', 'Axes');
+        ax.Units = 'pixels';
+        width = h_width - left_margin - right_margin - 50;
+        height = h_height - top_margin - vert_spacing;
+        if height > 0 && width > 0
+            ax.Position = [left_margin, vert_spacing, width, height];
+            c = findall(hf.Children, 'Type', 'ColorBar');
+            c.Units = 'pixels';
+            c.Position = [h_width - 54, vert_spacing, 15, height];
+            c.Units = 'normalized';
+        end
+        ax.Units = 'normalized';
+    end
+
+    function [s, time_range] = get_current_signal(kk, win_len, extra_ms)
+        if nargin < 3
+            extra_ms = 0;
+        end
         s = signals{kk};
         if ~isempty(highlight_range) && abs(diff(highlight_range)) > 0
             t0 = min(highlight_range);
@@ -644,6 +674,8 @@ h_fig.WindowButtonUpFcn = '';
             t0 = time_range_view(1);
             t1 = time_range_view(2);
         end
+        t0 = t0 - extra_ms / 1e3;
+        t1 = t1 + extra_ms / 1e3;
         t0 = max(round(t0 * config.fs), 1);
         t1 = min(round(t1 * config.fs), signal_lengths(kk));
         s = s(t0:t1, :);
@@ -715,7 +747,7 @@ h_fig.WindowButtonUpFcn = '';
                 end
             end
             play_src = [];
-            update_selections([], '');
+            update_play_button;
         end
 
         function draw_play_cursors(~, ~)
@@ -820,7 +852,6 @@ h_fig.WindowButtonUpFcn = '';
 
     last_action_was_highlight = 0;
     last_button_down = '';
-    last_clicked_axes = [];
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         if verbose
@@ -831,9 +862,7 @@ h_fig.WindowButtonUpFcn = '';
         switch(h_fig.SelectionType)
             case 'normal'
                 % left mouse: start highlight, move indicator to current axes, setup mouse callbacks
-                selection_state_before = selected_axes(n_axes);
                 time_mouse_down = tic;
-                update_selections(n_axes, 1);
                 highlight_start = get_mouse_pointer_time;
                 text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                 h_fig.WindowButtonUpFcn = @button_up_callback;
@@ -857,7 +886,6 @@ h_fig.WindowButtonUpFcn = '';
                 switch(last_button_down)
                     case 'normal'
                         % double click left: zoom out full
-                        update_selections(last_clicked_axes, 'toggle');
                         set_time_range([0, inf], 1);
                     case 'alt'
                         % right mouse: zoom out 2x
@@ -871,17 +899,20 @@ h_fig.WindowButtonUpFcn = '';
         if ~strcmp(h_fig.SelectionType, 'open')
             last_button_down = h_fig.SelectionType;
         end
-        last_clicked_axes = n_axes;
 
         function button_up_callback(~, ~)
             h_fig.WindowButtonUpFcn = '';
             h_fig.WindowButtonMotionFcn = '';
             text_segment.Visible = 'off';
-            if last_action_was_highlight
-                highlight_range = [highlight_start, get_mouse_pointer_time];
-                update_selections([], '');
-            elseif toc(time_mouse_down) < 0.3
-                update_selections(last_clicked_axes, 1 - selection_state_before);
+            if last_action_was_highlight 
+                spectrum_update;
+                spectrogram_callback;
+            elseif toc(time_mouse_down) < 0.4
+                update_selections(n_axes, 'toggle');
+                if diff(highlight_range)
+                    spectrum_update;
+                    spectrogram_callback;
+                end
             end
             last_action_was_highlight = 0;
         end
