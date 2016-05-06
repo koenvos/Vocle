@@ -595,7 +595,7 @@ h_fig.WindowButtonUpFcn = '';
             
             ax(i) = axes('Parent', h_specgram{i});
             win_len_ms = 50;
-            step_ms = 2;
+            step_ms = 1;
             [s, time_range] = get_current_signal(kk(i), 0, win_len_ms / 2);
             % take average between all channels (for now..)
             s = mean(s, 2);
@@ -603,20 +603,38 @@ h_fig.WindowButtonUpFcn = '';
             step = step_ms * config.fs / 1e3;
             N = ceil((length(s) - win_len + 1) / step);
             if N > 0
-                nfft = 2^nextpow2(win_len * 5);
-                win = sin((1:win_len/4)' / (win_len+1) * 2*pi) .^ 2;
-                win = [win; ones(win_len/2, 1); win(end:-1:1)];
+                U = 10;
+                s_up = resample(s, U, 1, 30);
+                nfft = 2^nextpow2(win_len * 2);
                 F = zeros(nfft/2+1, N);
+                smpl_step = (1:win_len-1)'/win_len * 0.01;
+                smpl_step = smpl_step - mean(smpl_step);
+                mm = -10:5:15;
+                %mm = 0;
+                M = length(mm);
+                dt = smpl_step * (mm * U);
+                tw = bsxfun(@plus, (0:win_len-1)' * U + 1, [zeros(1, M); cumsum(dt)]);
+                t_int = floor(tw);
+                t_frac = tw - t_int;
+                win = sin((0.5:win_len)' / win_len * pi) .^ 1.2;
+                win = bsxfun(@times, (1 + [dt(1) * ones(1, M); dt]).^0.5, win);
                 for n = 1:N
-                    t = (1:win_len) + (n-1) * step;
-                    f = fft(s(t) .* win, nfft);
-                    F(:, n) = abs(f(1:nfft/2+1));
+                    si = s_up(t_int) + (s_up(t_int+1) - s_up(t_int)) .* t_frac;
+                    t_int = t_int + step * U;
+                    f = fft(si .* win, nfft);
+                    f = abs(f(1:nfft/2+1, :));
+                    r = mean(f) ./ sqrt(mean(f.^2));
+                    r = min(r) - r - abs(mm) * 1e-3;
+                    w = exp(100 * r);
+                    w = w / sum(w);
+                    F(:, n) = f * w';
                 end
                 F = max(F, 1e-5 * max(F(:)));
                 F = 20 * log10(F);
                 t = time_range(1) + win_len_ms/2e3 + (-0.5:N) * step_ms/1e3;
                 fr = (-0.5:nfft/2+1)/nfft * config.fs;
-                F = [[F; zeros(1, N)], zeros(length(fr), 1)];
+                F = [F; F(end, :)];
+                F = [F, F(:, end)];
                 pcolor(ax(i), t, fr/1e3, F);
                 ax(i).XLim = [t(1), t(end)];
                 ylabel('kHz');
@@ -628,7 +646,9 @@ h_fig.WindowButtonUpFcn = '';
                 specgram_place_axes(h_specgram{i});
             end
         end
-        linkaxes(ax);
+        if length(kk) > 1
+            linkaxes(ax);
+        end
         for i = length(kk)+1:length(h_specgram)
             if ishandle(h_specgram{i})
                 close(h_specgram{i});
@@ -650,13 +670,13 @@ h_fig.WindowButtonUpFcn = '';
         h_height = hf.Position(4);
         ax = findall(hf.Children, 'Type', 'Axes');
         ax.Units = 'pixels';
-        width = h_width - left_margin - right_margin - 50;
+        width = h_width - left_margin - right_margin - 45;
         height = h_height - top_margin - vert_spacing;
         if height > 0 && width > 0
             ax.Position = [left_margin, vert_spacing, width, height];
             c = findall(hf.Children, 'Type', 'ColorBar');
             c.Units = 'pixels';
-            c.Position = [h_width - 54, vert_spacing, 15, height];
+            c.Position = [h_width - 53, vert_spacing, 15, height];
             c.Units = 'normalized';
         end
         ax.Units = 'normalized';
