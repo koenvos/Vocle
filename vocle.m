@@ -119,11 +119,11 @@ h_save = uimenu(h_file, 'Label', 'Save Signal', 'Callback', @save_file_callback)
 uimenu(h_file, 'Label', 'Save Figure', 'Callback', 'filemenufcn(gcbf, ''FileSaveAs'')');
 h_spec_menu = uimenu(h_fig, 'Label', '&Spectrum', 'Callback', @spectrum_callback);
 h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
-h_fs = uimenu(h_fig, 'Label', 'Sampling &Rate');
+h_settings = uimenu(h_fig, 'Label', 'Se&ttings');
+h_fs = uimenu(h_settings, 'Label', 'Sampling &Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
 end
-h_settings = uimenu(h_fig, 'Label', 'Se&ttings');
 h_f_scale = uimenu(h_settings, 'Label', 'Fre&quency Scale');
 uimenu(h_f_scale, 'Label', 'Linear', 'Callback', @freq_scale_callback);
 uimenu(h_f_scale, 'Label', 'Perceptual', 'Callback', @freq_scale_callback);
@@ -594,12 +594,15 @@ h_fig.WindowButtonUpFcn = '';
             h_specgram{i}.ResizeFcn = @specgram_place_axes;
             
             ax(i) = axes('Parent', h_specgram{i});
-            win_len_ms = 50;
+            % window lengths should be a multiple of 10 ms to handle 44100 Hz
+            win_len_ms = 80;
+            win2_len_ms = 50;
             step_ms = 1;
             [s, time_range] = get_current_signal(kk(i), 0, win_len_ms / 2);
             % take average between all channels (for now..)
             s = mean(s, 2);
             win_len = win_len_ms * config.fs / 1e3;
+            win2_len = win2_len_ms * config.fs / 1e3;
             step = step_ms * config.fs / 1e3;
             N = ceil((length(s) - win_len + 1) / step);
             if N > 0
@@ -609,23 +612,28 @@ h_fig.WindowButtonUpFcn = '';
                 F = zeros(nfft/2+1, N);
                 smpl_step = (1:win_len-1)'/win_len * 0.01;
                 smpl_step = smpl_step - mean(smpl_step);
-                mm = -10:5:15;
+                % frequency modulation values
+                mm = -15:4:25;
                 %mm = 0;
                 M = length(mm);
                 dt = smpl_step * (mm * U);
                 tw = bsxfun(@plus, (0:win_len-1)' * U + 1, [zeros(1, M); cumsum(dt)]);
                 t_int = floor(tw);
                 t_frac = tw - t_int;
-                win = sin((0.5:win_len)' / win_len * pi) .^ 1.2;
+                win = sin((0.5:win_len)' / win_len * pi) .^ 2;
                 win = bsxfun(@times, (1 + [dt(1) * ones(1, M); dt]).^0.5, win);
+                win2 = [zeros((win_len-win2_len)/2, 1); ...
+                    sin((0.5:win2_len)' / win2_len * pi) .^ 2; zeros((win_len-win2_len)/2, 1)];
+                win2 = win2 * sqrt(win_len / win2_len);
+                [~, i2] = min(abs(mm));
                 for n = 1:N
                     si = s_up(t_int) + (s_up(t_int+1) - s_up(t_int)) .* t_frac;
                     t_int = t_int + step * U;
-                    f = fft(si .* win, nfft);
+                    f = fft([si .* win, si(:, i2) .* win2], nfft);
                     f = abs(f(1:nfft/2+1, :));
-                    r = mean(f) ./ sqrt(mean(f.^2));
-                    r = min(r) - r - abs(mm) * 1e-3;
-                    w = exp(100 * r);
+                    r = mean(f);
+                    r = min(r) - r;
+                    w = exp(80 * r);
                     w = w / sum(w);
                     F(:, n) = f * w';
                 end
@@ -663,7 +671,7 @@ h_fig.WindowButtonUpFcn = '';
         if nargin > 1
             % to handle a bug in colorbar position when resizing a spectrogram 
             % window, wait for matlab to update layout first
-            pause(0.1);
+            pause(0.5);
         end
         hf = varargin{1};
         h_width = hf.Position(3);
@@ -694,10 +702,11 @@ h_fig.WindowButtonUpFcn = '';
             t0 = time_range_view(1);
             t1 = time_range_view(2);
         end
-        t0 = t0 - extra_ms / 1e3;
-        t1 = t1 + extra_ms / 1e3;
+        zr = zeros(round(extra_ms * config.fs / 1e3), size(s, 2));
+        s = [zr; s; zr];
+        t1 = t1 + 2 * extra_ms / 1e3;
         t0 = max(round(t0 * config.fs), 1);
-        t1 = min(round(t1 * config.fs), signal_lengths(kk));
+        t1 = min(round(t1 * config.fs), size(s, 1));
         s = s(t0:t1, :);
         smpls = size(s, 1);
         if win_len > 0
@@ -708,7 +717,7 @@ h_fig.WindowButtonUpFcn = '';
             s(t, :) = bsxfun(@times, s(t, :), win);
             s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
         end
-        time_range = [t0, t1] / config.fs;
+        time_range = [t0, t1] / config.fs - extra_ms / 1e3;
     end
 
     function start_play(varargin)
