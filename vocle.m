@@ -79,6 +79,7 @@ spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
 spectrum_perc_fc_Hz = 500;
 spectrum_perc_smoothing = 0.025;
+specgram_win_ms = [10, 20, 40, 70];  % window lengths should be a multiple of 10 ms to handle 44100 Hz
 verbose = 0;
 
 % function-wide variables
@@ -124,13 +125,24 @@ h_fs = uimenu(h_settings, 'Label', 'Sampling &Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
 end
-h_f_scale = uimenu(h_settings, 'Label', 'Fre&quency Scale');
-uimenu(h_f_scale, 'Label', 'Linear', 'Callback', @freq_scale_callback);
-uimenu(h_f_scale, 'Label', 'Perceptual', 'Callback', @freq_scale_callback);
+h_f_scale = uimenu(h_settings, 'Label', 'Spectrum Scale');
+uimenu(h_f_scale, 'Label', 'Linear', 'Callback', @spec_scale_callback);
+uimenu(h_f_scale, 'Label', 'Perceptual', 'Callback', @spec_scale_callback);
 if ~isfield(config, 'spectrum_scale')
+    % default
     config.spectrum_scale = 'Perceptual';
 end    
 set(findall(h_f_scale.Children, 'Label', config.spectrum_scale), 'Checked', 'on');
+h_sg_win = uimenu(h_settings, 'Label', 'Spectrogram Window');
+for k = 1:length(specgram_win_ms)
+    uimenu(h_sg_win, 'Label', [num2str(specgram_win_ms(k)), ' ms'], 'Callback', @change_sg_win_callback);
+end
+if ~isfield(config, 'specgram_win') || isempty(findall(h_sg_win.Children, 'Label', [num2str(config.specgram_win), ' ms']))
+    % default
+    config.specgram_win = specgram_win_ms(floor(end/2+1));
+end
+set(findall(h_sg_win.Children, 'Label', [num2str(config.specgram_win), ' ms']), 'Checked', 'on');
+
 
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
@@ -594,15 +606,12 @@ h_fig.WindowButtonUpFcn = '';
             h_specgram{i}.ResizeFcn = @specgram_place_axes;
             
             ax(i) = axes('Parent', h_specgram{i});
-            % window lengths should be a multiple of 10 ms to handle 44100 Hz
-            win_len_ms = 80;
-            win2_len_ms = 50;
+            win_len_ms = sscanf(get(findall(h_sg_win.Children, 'Checked', 'on'), 'Label'), '%d ms');
             step_ms = 1;
             [s, time_range] = get_current_signal(kk(i), 0, win_len_ms / 2);
             % take average between all channels (for now..)
             s = mean(s, 2);
             win_len = win_len_ms * config.fs / 1e3;
-            win2_len = win2_len_ms * config.fs / 1e3;
             step = step_ms * config.fs / 1e3;
             N = ceil((length(s) - win_len + 1) / step);
             if N > 0
@@ -610,30 +619,28 @@ h_fig.WindowButtonUpFcn = '';
                 s_up = resample(s, U, 1, 30);
                 nfft = 2^nextpow2(win_len * 2);
                 F = zeros(nfft/2+1, N);
+                % frequency modulation values
+                if win_len_ms > 10
+                    mm = ( -round(min(win_len_ms/20, 10)):round(min(win_len_ms/8, 15)) ) * 4;
+                else
+                    mm = 0;
+                end
                 smpl_step = (1:win_len-1)'/win_len * 0.01;
                 smpl_step = smpl_step - mean(smpl_step);
-                % frequency modulation values
-                mm = -15:4:25;
-                %mm = 0;
-                M = length(mm);
                 dt = smpl_step * (mm * U);
-                tw = bsxfun(@plus, (0:win_len-1)' * U + 1, [zeros(1, M); cumsum(dt)]);
+                tw = bsxfun(@plus, (0:win_len-1)' * U + 1, [dt(1, :) * 0; cumsum(dt)]);
                 t_int = floor(tw);
                 t_frac = tw - t_int;
                 win = sin((0.5:win_len)' / win_len * pi) .^ 2;
-                win = bsxfun(@times, (1 + [dt(1) * ones(1, M); dt]).^0.5, win);
-                win2 = [zeros((win_len-win2_len)/2, 1); ...
-                    sin((0.5:win2_len)' / win2_len * pi) .^ 2; zeros((win_len-win2_len)/2, 1)];
-                win2 = win2 * sqrt(win_len / win2_len);
-                [~, i2] = min(abs(mm));
+                win = bsxfun(@times, (1 + [dt(1, :); dt]).^0.5, win);
                 for n = 1:N
                     si = s_up(t_int) + (s_up(t_int+1) - s_up(t_int)) .* t_frac;
                     t_int = t_int + step * U;
-                    f = fft([si .* win, si(:, i2) .* win2], nfft);
+                    f = fft(si .* win, nfft);
                     f = abs(f(1:nfft/2+1, :));
                     r = mean(f);
                     r = min(r) - r;
-                    w = exp(80 * r);
+                    w = exp(250 * r - abs(mm) * 0.5);
                     w = w / sum(w);
                     F(:, n) = f * w';
                 end
@@ -994,7 +1001,13 @@ h_fig.WindowButtonUpFcn = '';
         spectrogram_callback;
     end
 
-    function freq_scale_callback(src, ~)
+    function change_sg_win_callback(src, ~)
+        set(findall(h_sg_win.Children, 'Checked', 'on'), 'Checked', 'off');
+        src.Checked = 'on';
+        spectrogram_callback;
+    end
+
+    function spec_scale_callback(src, ~)
         set(findall(h_f_scale.Children, 'Checked', 'on'), 'Checked', 'off');
         src.Checked = 'on';
         spectrum_update;
