@@ -745,6 +745,9 @@ h_fig.WindowButtonUpFcn = '';
         if length(play_src) == 1
             % playback from a single axes
             [s, play_time_range] = get_current_signal(play_src, config.fs / 100);
+            if isempty(s)
+                return;
+            end
             s = s / signals_max(play_src) * 10^(0.05 * playback_dBov);
             s = resample(s, playback_fs, config.fs, 50);
         elseif length(play_src) == 2
@@ -754,6 +757,9 @@ h_fig.WindowButtonUpFcn = '';
             play_time_range = 0;
             for i = 1:2
                 [s{i}, tr] = get_current_signal(play_src(i), config.fs / 100);
+                if isempty(s{i})
+                    return;
+                end
                 play_time_range = play_time_range + tr / 2;
                 s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
                 s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
