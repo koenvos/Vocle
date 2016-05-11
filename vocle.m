@@ -620,7 +620,7 @@ h_fig.WindowButtonUpFcn = '';
             if N > 0
                 U = 10;
                 s_up = resample(s, U, 1, 30);
-                nfft = 2^nextpow2(win_len * 2);
+                nfft = 2^nextpow2(win_len * 3);
                 F = zeros(nfft/2+1, N);
                 % frequency modulation values
                 if win_len_ms > 10
@@ -635,7 +635,7 @@ h_fig.WindowButtonUpFcn = '';
                 tw = bsxfun(@plus, (0:win_len-1)' * U + 1, [dt(1, :) * 0; cumsum(dt)]);
                 t_int = floor(tw);
                 t_frac = tw - t_int;
-                win = sin((0.5:win_len)' / win_len * pi) .^ 1.5;
+                win = sin((0.5:win_len)' / win_len * pi) .^ 2;
                 win = bsxfun(@times, (1 + [dt(1, :); dt]).^0.5, win);
                 for n = 1:N
                     % for each frame, resample signal with different linear frequency shifts and
