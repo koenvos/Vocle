@@ -137,7 +137,8 @@ h_sg_win = uimenu(h_settings, 'Label', 'Spectrogram Window');
 for k = 1:length(specgram_win_ms)
     uimenu(h_sg_win, 'Label', [num2str(specgram_win_ms(k)), ' ms'], 'Callback', @change_sg_win_callback);
 end
-if ~isfield(config, 'specgram_win') || isempty(findall(h_sg_win.Children, 'Label', [num2str(config.specgram_win), ' ms']))
+if ~isfield(config, 'specgram_win') || ...
+        isempty(findall(h_sg_win.Children, 'Label', [num2str(config.specgram_win), ' ms']))
     % default
     config.specgram_win = specgram_win_ms(floor(end/2+1));
 end
@@ -410,7 +411,8 @@ h_fig.WindowButtonUpFcn = '';
             for i = 1:length(kk)
                 s_ = get_current_signal(kk(i), config.fs / 20);
                 if ~isempty(s_)
-                    s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
+                    s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], ...
+                         [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
                     switch(size(s_, 2))
                         case 1
                             legend_str{end+1} = ['Signal ', num2str(kk(i))];
@@ -558,7 +560,8 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     % perceptual frequency scale: bandwidth is proportional to f_Hz + spectrum_perc_fc_Hz
-    % this means: log scale for frequencies >> spectrum_perc_fc_Hz; linear scale for frequencies << spectrum_perc_fc_Hz
+    % this means: log scale for frequencies >> spectrum_perc_fc_Hz; linear scale for 
+    % frequencies << spectrum_perc_fc_Hz
     function [p, dp] = lin2perc(f_Hz)
         p = log(f_Hz + spectrum_perc_fc_Hz) - log(spectrum_perc_fc_Hz);
         % derivative
@@ -621,26 +624,32 @@ h_fig.WindowButtonUpFcn = '';
                 F = zeros(nfft/2+1, N);
                 % frequency modulation values
                 if win_len_ms > 10
-                    mm = ( -round(min(win_len_ms/20, 10)):round(min(win_len_ms/8, 15)) ) * 4;
+                    dmm = 4;
+                    mm = ( -round(min(0.25 * win_len_ms, 40) / dmm) : round(min(0.6 * win_len_ms, 60) / dmm) ) * dmm;
                 else
                     mm = 0;
                 end
-                smpl_step = (1:win_len-1)'/win_len * 0.01;
+                smpl_step = (1:win_len-1)' / win_len * 0.01;
                 smpl_step = smpl_step - mean(smpl_step);
                 dt = smpl_step * (mm * U);
                 tw = bsxfun(@plus, (0:win_len-1)' * U + 1, [dt(1, :) * 0; cumsum(dt)]);
                 t_int = floor(tw);
                 t_frac = tw - t_int;
-                win = sin((0.5:win_len)' / win_len * pi) .^ 2;
+                win = sin((0.5:win_len)' / win_len * pi) .^ 1.5;
                 win = bsxfun(@times, (1 + [dt(1, :); dt]).^0.5, win);
                 for n = 1:N
+                    % for each frame, resample signal with different linear frequency shifts and
+                    % compute FFT for each resampled signal. then measure sparseness for each 
+                    % spectrum, and blend magnitude spectra with weights proportional to sparseness
                     si = s_up(t_int) + (s_up(t_int+1) - s_up(t_int)) .* t_frac;
                     t_int = t_int + step * U;
                     f = fft(si .* win, nfft);
                     f = abs(f(1:nfft/2+1, :));
-                    r = mean(f);
+                    % sparseness measure
+                    r = mean(f) ./ sqrt(mean(f.^2));
+                    % weights
                     r = min(r) - r;
-                    w = exp(250 * r - abs(mm) * 0.5);
+                    w = exp(200 * r - abs(mm) * 0.5);
                     w = w / sum(w);
                     F(:, n) = f * w';
                 end
@@ -714,7 +723,7 @@ h_fig.WindowButtonUpFcn = '';
         t1 = t1 + 2 * extra_ms / 1e3;
         t0 = max(round(t0 * config.fs), 1);
         t1 = min(round(t1 * config.fs), size(s, 1));
-        s = s(t0:t1, :);
+        s = double(s(t0:t1, :));
         smpls = size(s, 1);
         if win_len > 0
             % windowing
@@ -868,8 +877,9 @@ h_fig.WindowButtonUpFcn = '';
         if ~isempty(highlight_range)
             for kk = 1:num_signals
                 if isempty(highlight_patches{kk})
-                    highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), 2 * signals_max(kk) * [-1, -1, 1, 1], ...
-                        highlight_color, 'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
+                    highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), ...
+                        2 * signals_max(kk) * [-1, -1, 1, 1], highlight_color, ...
+                        'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
                     uistack(highlight_patches{kk}, 'bottom');
                 else
                     highlight_patches{kk}.Vertices(:, 1) = highlight_range([1, 2, 2, 1]);
@@ -883,7 +893,7 @@ h_fig.WindowButtonUpFcn = '';
             kk = get(gca, 'UserData');
             t = get_mouse_pointer_time * config.fs;
             % linearly interpolate
-            yval = ([1, 0] + [-1, 1] * (t - floor(t))) * signals{kk}(floor(t) + [0; 1], :);
+            yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
             text_segment.String = num2str(yval, ' %.3g');
             text_segment.Visible = 'on';
             % the function called next will set text_segment.Position
