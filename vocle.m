@@ -37,7 +37,7 @@ function vocle(varargin)
 %  Copyright 2016 Koen Vos
 
 % todo:
-% - spectrogram
+% - open multiple files --> 
 % - remember selection, zoom and highlight if main window was already open?
 % - "keep" option, to store a signal and add it to the next call to vocle?
 %   --> show in a different color
@@ -63,8 +63,16 @@ top_margin = 10;
 vert_spacing = 23;
 slider_height = 16;
 figure_color = [0.9, 0.9, 0.9];
-selection_color = [0.93, 0.93, 0.93];
-highlight_color = [0.73, 0.82, 0.91];
+if 1
+    axes_color = [0.93, 0.93, 0.93];
+    selection_color = [1, 1, 1];
+    highlight_color = [0.73, 0.82, 0.91];
+else
+    axes_color = [1, 1, 1];
+    selection_color = [0.9, 0.95, 1];
+    highlight_color = [0.75, 0.85, 0.95];
+end
+marker_color = [0.2, 0.3, 0.5];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
 ylim_margin = 1.1;
@@ -89,6 +97,7 @@ h_specgram = {};
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
+highlight_markers = {};
 player = [];
 play_src = [];
 play_cursors = {};
@@ -211,7 +220,7 @@ for k = 1:num_signals
 end
 text_segment = uicontrol(h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
-time_slider = uicontrol(h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', selection_color);
+time_slider = uicontrol(h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', axes_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
 play_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
 update_layout;
@@ -255,9 +264,12 @@ h_fig.WindowButtonUpFcn = '';
         end
         str = 'vocle(';
         if iscell(file_names)
+            disp('Order:');
             for kk = 1:length(file_names)-1
-                 str = [str, '''', path_name file_names{kk}, ''', '];
+                disp(file_names{kk});
+                str = [str, '''', path_name file_names{kk}, ''', '];
             end
+            disp(file_names{end});
             str = [str, '''', path_name file_names{end}, ''');'];
         else
             str = [str, '''', path_name file_names, ''');'];
@@ -301,7 +313,7 @@ h_fig.WindowButtonUpFcn = '';
             end
         end
         for kk = 1:num_signals
-            h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
+            h_ax{kk}.Color = selection_color * selected_axes(kk) + axes_color * (1-selected_axes(kk));
         end
         if sum(selected_axes) == 0
             h_spec_menu.Enable = 'off';
@@ -361,7 +373,7 @@ h_fig.WindowButtonUpFcn = '';
             t = (t0 + (0:size(s, 1)-1) * (t1-t0+1) / max(length(s), 1)) / config.fs;
             plot(h_ax{kk}, t, s, 'ButtonDownFcn', @plot_button_down_callback);
             h_ax{kk}.UserData = kk;
-            h_ax{kk}.Color = selection_color.^(1-selected_axes(kk));
+            h_ax{kk}.Color = selection_color * selected_axes(kk) + axes_color * (1-selected_axes(kk));
             h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
             h_ax{kk}.Layer = 'top';
             h_ax{kk}.FontSize = axes_label_font_size;
@@ -879,7 +891,7 @@ h_fig.WindowButtonUpFcn = '';
                 if isempty(highlight_patches{kk})
                     highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), ...
                         2 * signals_max(kk) * [-1, -1, 1, 1], highlight_color, ...
-                        'Parent', h_ax{kk}, 'LineStyle', 'none', 'FaceAlpha', 0.4, 'HitTest', 'off');
+                        'Parent', h_ax{kk}, 'EdgeColor', marker_color, 'LineWidth', 0.3, 'FaceAlpha', 0.4, 'HitTest', 'off');
                     uistack(highlight_patches{kk}, 'bottom');
                 else
                     highlight_patches{kk}.Vertices(:, 1) = highlight_range([1, 2, 2, 1]);
@@ -919,6 +931,10 @@ h_fig.WindowButtonUpFcn = '';
                 text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                 h_fig.WindowButtonUpFcn = @button_up_callback;
                 h_fig.WindowButtonMotionFcn = @button_motion_callback;
+                for kk = 1:num_signals
+                    highlight_markers{kk} = line([1, 1] * highlight_start, [-1, 1] * 2 * signals_max(kk), ...
+                        'Parent', h_ax{kk}, 'Color', marker_color, 'HitTest', 'off');
+                end
             case 'alt'
                 % right mouse
                 if isempty(highlight_range) || diff(highlight_range) == 0
@@ -959,11 +975,16 @@ h_fig.WindowButtonUpFcn = '';
             if last_action_was_highlight 
                 spectrum_update;
                 spectrogram_callback;
-            elseif toc(time_mouse_down) < 0.4
-                update_selections(n_axes, 'toggle');
-                if diff(highlight_range)
-                    spectrum_update;
-                    spectrogram_callback;
+            else
+                for kkk = 1:num_signals
+                    delete(highlight_markers{kkk});
+                end
+                if toc(time_mouse_down) < 0.4
+                    update_selections(n_axes, 'toggle');
+                    if diff(highlight_range)
+                        spectrum_update;
+                        spectrogram_callback;
+                    end
                 end
             end
             last_action_was_highlight = 0;
@@ -986,6 +1007,9 @@ h_fig.WindowButtonUpFcn = '';
             text_segment.Visible = 'on';
             draw_highlights;
             last_action_was_highlight = 1;
+            for kkk = 1:num_signals
+                delete(highlight_markers{kkk});
+            end
         end
     end
 
