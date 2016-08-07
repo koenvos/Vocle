@@ -146,12 +146,11 @@ h_sg_win = uimenu(h_settings, 'Label', 'Spectrogram Window');
 for k = 1:length(specgram_win_ms)
     uimenu(h_sg_win, 'Label', [num2str(specgram_win_ms(k)), ' ms'], 'Callback', @change_sg_win_callback);
 end
-if ~isfield(config, 'specgram_win') || ...
-        isempty(findall(h_sg_win.Children, 'Label', [num2str(config.specgram_win), ' ms']))
+if ~isfield(config, 'specgram_win') || isempty(findall(h_sg_win.Children, 'Label', config.specgram_win))
     % default
     config.specgram_win = specgram_win_ms(floor(end/2+1));
 end
-set(findall(h_sg_win.Children, 'Label', [num2str(config.specgram_win), ' ms']), 'Checked', 'on');
+set(findall(h_sg_win.Children, 'Label', config.specgram_win), 'Checked', 'on');
 
 
 % process inputs
@@ -380,7 +379,7 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.TickLength(1) = 0.006;
             if ~isempty(s)
                 as_ = abs(s(:));
-                maxy = ylim_margin * (max(as_) + 0.1 * mean(as_));
+                maxy = ylim_margin * (max(as_) + 0.1 * mean(as_(~isnan(as_))));
                 maxy = max(maxy, 1e-9);
             else
                 maxy = 1;
@@ -1045,6 +1044,7 @@ h_fig.WindowButtonUpFcn = '';
         set(findall(h_sg_win.Children, 'Checked', 'on'), 'Checked', 'off');
         src.Checked = 'on';
         spectrogram_callback;
+        write_config;
     end
 
     function spec_scale_callback(src, ~)
@@ -1088,6 +1088,9 @@ h_fig.WindowButtonUpFcn = '';
         end
         if ishandle(h_spectrum)
             config.spectrum_Position = h_spectrum.Position;
+        end
+        if ishandle(h_sg_win)
+            config.specgram_win = get(findall(h_sg_win.Children, 'Checked', 'on'), 'Label');
         end
         if ishandle(h_f_scale)
             config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
