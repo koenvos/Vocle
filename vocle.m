@@ -199,6 +199,14 @@ if sum(file_fs)
 end
 set(findall(h_fs.Children, 'Label', num2str(config.fs)), 'Checked', 'on');
 for k = 1:num_signals
+    if ~isreal(signals{k})
+        disp(['Warning: signal ', num2str(k), ' is complex; ignoring imaginary part']);
+        signals{k} = real(signals{k});
+    end
+    if any(isnan(signals{k}))
+        disp(['Warning: signal ', num2str(k), ' contains NaNs; replacing these by zeros']);
+        signals{k}(isnan(signals{k})) = 0;
+    end
     if file_fs(k)
         % upsample to highest sampling rate
         signals{k} = resample(signals{k}, config.fs, file_fs(k));
@@ -379,7 +387,7 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.TickLength(1) = 0.006;
             if ~isempty(s)
                 as_ = abs(s(:));
-                maxy = ylim_margin * (max(as_) + 0.1 * mean(as_(~isnan(as_))));
+                maxy = ylim_margin * (max(as_) + 0.1 * mean(as_));
                 maxy = max(maxy, 1e-9);
             else
                 maxy = 1;
