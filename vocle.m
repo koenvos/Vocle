@@ -167,6 +167,7 @@ highlight_patches = cell(num_signals, 1);
 signals = cell(num_signals, 1);
 signal_lengths = config.fs;  % default, in case of no input args
 signals_negative = zeros(num_signals, 1);
+signals_positive = zeros(num_signals, 1);
 signals_max = zeros(num_signals, 1);
 file_fs = zeros(num_signals, 1);
 for k = 1:num_signals
@@ -216,6 +217,7 @@ for k = 1:num_signals
     signal_lengths(k) = size(signals{k}, 1);
     stmp = signals{k}(:);
     signals_negative(k) = min(stmp) < 0;
+    signals_positive(k) = max(stmp) > 0;
     signals_max(k) = max(max(abs(stmp)), 1e-9);
 end
 
@@ -387,12 +389,13 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.TickLength(1) = 0.006;
             if ~isempty(s)
                 as_ = abs(s(:));
-                maxy = ylim_margin * (max(as_) + 0.1 * mean(as_));
-                maxy = max(maxy, 1e-9);
+                maxabs = ylim_margin * (max(as_) + 0.1 * mean(as_));
+                maxabs = max(maxabs, 1e-9);
             else
-                maxy = 1;
+                maxabs = 1;
             end
-            miny = -maxy * signals_negative(kk);
+            maxy =  maxabs * signals_positive(kk);
+            miny = -maxabs * signals_negative(kk);
             h_ax{kk}.XLim = time_range_view;
             h_ax{kk}.YLim = [miny, maxy];
         end
