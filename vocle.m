@@ -387,15 +387,20 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.Layer = 'top';
             h_ax{kk}.FontSize = axes_label_font_size;
             h_ax{kk}.TickLength(1) = 0.006;
-            if ~isempty(s)
-                as_ = abs(s(:));
-                maxabs = ylim_margin * (max(as_) + 0.1 * mean(as_));
-                maxabs = max(maxabs, 1e-9);
+            if ~signals_positive(kk) && ~signals_negative(kk)
+                maxy =  1e-9;
+                miny = -1e-9;
             else
-                maxabs = 1;
+                if ~isempty(s)
+                    as_ = abs(s(:));
+                    maxabs = ylim_margin * (max(as_) + 0.1 * mean(as_));
+                    maxabs = max(maxabs, 1e-9);
+                else
+                    maxabs = 1;
+                end
+                maxy =  maxabs * signals_positive(kk);
+                miny = -maxabs * signals_negative(kk);
             end
-            maxy =  maxabs * signals_positive(kk);
-            miny = -maxabs * signals_negative(kk);
             h_ax{kk}.XLim = time_range_view;
             h_ax{kk}.YLim = [miny, maxy];
         end
