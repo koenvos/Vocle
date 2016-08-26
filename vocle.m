@@ -59,7 +59,7 @@ left_margin = 42;
 right_margin = 22;
 bottom_margin = 80;
 bottom_margin_spec = 38;
-top_margin = 10;
+top_margin = 12;
 vert_spacing = 23;
 slider_height = 16;
 figure_color = [0.9, 0.9, 0.9];
@@ -78,16 +78,16 @@ max_zoom_smpls = 6;
 ylim_margin = 1.1;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
-playback_fs = 48000;
+playback_fs = 44100;
 playback_bits = 24;
 playback_dBov = -1;
 playback_cursor_delay_ms = 100;
-playback_silence_betwee_A_B_ms = 250;
+playback_silence_betwee_A_B_ms = 400;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
 spectrum_perc_fc_Hz = 500;
 spectrum_perc_smoothing = 0.025;
-specgram_win_ms = [10, 20, 40, 70];  % window lengths should be a multiple of 10 ms to handle 44100 Hz
+specgram_win_ms = [5, 10, 20, 40, 70];  % window lengths should be a multiple of 10 ms to handle 44100 Hz
 verbose = 0;
 
 % function-wide variables
@@ -218,7 +218,7 @@ for k = 1:num_signals
     stmp = signals{k}(:);
     signals_negative(k) = min(stmp) < 0;
     signals_positive(k) = max(stmp) > 0;
-    signals_max(k) = max(max(abs(stmp)), 1e-9);
+    signals_max(k) = max(max(abs(stmp)), 1e-99);
 end
 
 % add elements to UI
@@ -280,10 +280,11 @@ h_fig.WindowButtonUpFcn = '';
             end
             disp(file_names{end});
             str = [str, '''', path_name file_names{end}, ''');'];
-        else
+            eval(str);
+        elseif file_names ~= 0
             str = [str, '''', path_name file_names, ''');'];
+            eval(str);
         end
-        eval(str);
     end
 
     function save_file_callback(~, ~)
@@ -388,13 +389,13 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.FontSize = axes_label_font_size;
             h_ax{kk}.TickLength(1) = 0.006;
             if ~signals_positive(kk) && ~signals_negative(kk)
-                maxy =  1e-9;
-                miny = -1e-9;
+                maxy =  1e-99;
+                miny = -1e-99;
             else
                 if ~isempty(s)
                     as_ = abs(s(:));
                     maxabs = ylim_margin * (max(as_) + 0.1 * mean(as_));
-                    maxabs = max(maxabs, 1e-9);
+                    maxabs = max(maxabs, 1e-99);
                 else
                     maxabs = 1;
                 end
@@ -637,7 +638,7 @@ h_fig.WindowButtonUpFcn = '';
             
             ax(i) = axes('Parent', h_specgram{i});
             win_len_ms = sscanf(get(findall(h_sg_win.Children, 'Checked', 'on'), 'Label'), '%d ms');
-            step_ms = 1;
+            step_ms = min(win_len_ms/20, 1) ;
             [s, time_range] = get_current_signal(kk(i), 0, win_len_ms / 2);
             % take average between all channels (for now..)
             s = mean(s, 2);
