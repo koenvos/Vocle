@@ -76,6 +76,7 @@ marker_color = [0.2, 0.3, 0.5];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
 ylim_margin = 1.1;
+min_abs_signal = 1e-99;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 44100;
@@ -218,7 +219,7 @@ for k = 1:num_signals
     stmp = signals{k}(:);
     signals_negative(k) = min(stmp) < 0;
     signals_positive(k) = max(stmp) > 0;
-    signals_max(k) = max(max(abs(stmp)), 1e-99);
+    signals_max(k) = max(max(abs(stmp)), min_abs_signal);
 end
 
 % add elements to UI
@@ -389,13 +390,13 @@ h_fig.WindowButtonUpFcn = '';
             h_ax{kk}.FontSize = axes_label_font_size;
             h_ax{kk}.TickLength(1) = 0.006;
             if ~signals_positive(kk) && ~signals_negative(kk)
-                maxy =  1e-99;
-                miny = -1e-99;
+                maxy =  min_abs_signal;
+                miny = -min_abs_signal;
             else
                 if ~isempty(s)
                     as_ = abs(s(:));
                     maxabs = ylim_margin * (max(as_) + 0.1 * mean(as_));
-                    maxabs = max(maxabs, 1e-99);
+                    maxabs = max(maxabs, min_abs_signal);
                 else
                     maxabs = 1;
                 end
@@ -906,8 +907,8 @@ h_fig.WindowButtonUpFcn = '';
             for kk = 1:num_signals
                 if isempty(highlight_patches{kk})
                     highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), ...
-                        2 * signals_max(kk) * [-1, -1, 1, 1], highlight_color, ...
-                        'Parent', h_ax{kk}, 'EdgeColor', marker_color, 'LineWidth', 0.3, 'FaceAlpha', 0.4, 'HitTest', 'off');
+                        2 * kron(h_ax{kk}.YLim, [1, 1]), highlight_color, 'Parent', h_ax{kk}, ...
+                        'EdgeColor', marker_color, 'LineWidth', 0.3, 'FaceAlpha', 0.4, 'HitTest', 'off');
                     uistack(highlight_patches{kk}, 'bottom');
                 else
                     highlight_patches{kk}.Vertices(:, 1) = highlight_range([1, 2, 2, 1]);
