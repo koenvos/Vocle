@@ -840,8 +840,8 @@ h_fig.WindowButtonUpFcn = '';
                 delete(play_cursors{mm});
             end
             for mm = 1:length(play_src)
-                 play_cursors{mm} = line([1, 1] * t, [-1, 1] * 2 * signals_max(play_src(mm)), ...
-                    'Parent', h_ax{play_src(mm)}, 'Color', 'k', 'HitTest', 'off');
+                play_cursors{mm} = line([1, 1] * t, 2 * h_ax{play_src(mm)}.YLim, ...
+                   'Parent', h_ax{play_src(mm)}, 'Color', 'k', 'HitTest', 'off');
             end
         end
     end
@@ -949,7 +949,7 @@ h_fig.WindowButtonUpFcn = '';
                 h_fig.WindowButtonUpFcn = @button_up_callback;
                 h_fig.WindowButtonMotionFcn = @button_motion_callback;
                 for kk = 1:num_signals
-                    highlight_markers{kk} = line([1, 1] * highlight_start, [-1, 1] * 2 * signals_max(kk), ...
+                    highlight_markers{kk} = line([1, 1] * highlight_start, 2 * h_ax{kk}.YLim, ...
                         'Parent', h_ax{kk}, 'Color', marker_color, 'HitTest', 'off');
                 end
             case 'alt'
