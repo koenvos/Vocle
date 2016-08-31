@@ -404,7 +404,11 @@ h_fig.WindowButtonUpFcn = '';
                 miny = -maxabs * signals_negative(kk);
             end
             h_ax{kk}.XLim = time_range_view;
-            h_ax{kk}.YLim = [miny, maxy];
+            if maxy > miny
+                h_ax{kk}.YLim = [miny, maxy];
+            else
+                h_ax{kk}.YLim = [-1, 1];
+            end
         end
         highlight_range = tmp_range;
         draw_highlights;
@@ -699,8 +703,12 @@ h_fig.WindowButtonUpFcn = '';
                 specgram_place_axes(h_specgram{i});
             end
         end
-        if length(kk) > 1
-            linkaxes(ax);
+        ax(ishandle(ax) == 0) = [];
+        if length(ax) > 1
+            try
+                linkaxes(ax);
+            catch
+            end
         end
         for i = length(kk)+1:length(h_specgram)
             if ishandle(h_specgram{i})
