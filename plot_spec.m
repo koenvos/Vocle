@@ -31,5 +31,5 @@ ax = axis;
 lvls = sort(20*log10(abs(fx(:))+eps));
 max_fx = max(max_fx, lvls(end));
 min_fx = min(min_fx, lvls(round(end*0.02)));
-axis([0, fs/2, max(ax(3), min_fx), min(ax(4), max_fx+3)]);
+axis([0, fs/2, max(ax(3), min_fx-3), min(ax(4), max_fx+3)]);
 grid on;
