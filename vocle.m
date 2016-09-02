@@ -149,7 +149,7 @@ for k = 1:length(specgram_win_ms)
 end
 if ~isfield(config, 'specgram_win') || isempty(findall(h_sg_win.Children, 'Label', config.specgram_win))
     % default
-    config.specgram_win = specgram_win_ms(floor(end/2+1));
+    config.specgram_win = [num2str(specgram_win_ms(floor(end/2+1))), ' ms'];
 end
 set(findall(h_sg_win.Children, 'Label', config.specgram_win), 'Checked', 'on');
 
@@ -622,12 +622,16 @@ h_fig.WindowButtonUpFcn = '';
         kk = find(selected_axes);
         for i = 1:length(kk)
             % open figure and use position from config file
-            if ~fig_exist(specgram_no+i) && isfield(config, 'specgram_Position') && ...
-                    length(config.specgram_Position) >= i
+            if ( ~fig_exist(specgram_no+i) && isfield(config, 'specgram_Position') && ...
+                    length(config.specgram_Position) >= i ) || ~isempty(varargin)
                 h_specgram{i} = figure(specgram_no+i);
                 h_specgram{i}.Position = config.specgram_Position{i};
             else
-                h_specgram{i} = figure(specgram_no+i);
+                if ishandle(h_specgram{i})
+                    set(groot, 'CurrentFigure', h_specgram{i});
+                else
+                    h_specgram{i} = figure(specgram_no+i);
+                end
             end
             h_specgram{i}.CloseRequestFcn = @window_close_callback;
             h_specgram{i}.NumberTitle = 'off';
@@ -736,9 +740,11 @@ h_fig.WindowButtonUpFcn = '';
         if height > 0 && width > 0
             ax.Position = [left_margin, vert_spacing, width, height];
             c = findall(hf.Children, 'Type', 'ColorBar');
-            c.Units = 'pixels';
-            c.Position = [h_width - 53, vert_spacing, 15, height];
-            c.Units = 'normalized';
+            if ~isempty(c)
+                c.Units = 'pixels';
+                c.Position = [h_width - 53, vert_spacing, 15, height];
+                c.Units = 'normalized';
+            end
         end
         ax.Units = 'normalized';
     end
