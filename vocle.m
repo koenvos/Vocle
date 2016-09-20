@@ -414,6 +414,7 @@ h_fig.WindowButtonUpFcn = '';
         draw_highlights;
     end
 
+    % Spectrum
     function spectrum_callback(varargin)
         % open figure and use position from config file
         if ~fig_exist(spectrum_no) && isfield(config, 'spectrum_Position')
@@ -589,6 +590,7 @@ h_fig.WindowButtonUpFcn = '';
                 ax_spec.Position = [left_margin, bottom_margin_spec, width, height];
             end
             ax_spec.Units = 'normalized';
+            write_config;
         end
     end
 
@@ -607,6 +609,7 @@ h_fig.WindowButtonUpFcn = '';
         df_Hz = f_Hz + spectrum_perc_fc_Hz;
     end
 
+    % Spectrogram
     function spectrogram_callback(varargin)
         % see if any spectrogram windows are open
         specgram_open = 0;
@@ -747,6 +750,7 @@ h_fig.WindowButtonUpFcn = '';
             end
         end
         ax.Units = 'normalized';
+        write_config;
     end
 
     function [s, time_range] = get_current_signal(kk, win_len, extra_ms)
