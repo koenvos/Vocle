@@ -4,12 +4,12 @@ Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior.
 Advantages over spclab:
 - A/B test (select two signals)
 - Stereo support
-- Possible to interrrupt playback
+- Possible to stop playback
 - Scroll wheel zooming
 - Use sampling rate info from input files, if available
-- Remember window locations and sampling rate
-- Auto update spectrum when highlighting a new segment
-- Option to display spectrum on perceptual frequency scale
+- Remember window locations and settings
+- Auto update spectrum or spectrogram when highlighting a new segment
+- Optionally display spectrum on perceptual frequency scale
 - Fix some spclab features that broke over time by changes in Matlab
 
 Usage  
@@ -23,8 +23,8 @@ Navigation
 - Left mouse:                Toggle axes selection
 - Left mouse + drag:         Highlight segment
 - Right mouse:
-  - If highlight exists:    Zoom to highlighted segment; remove highlight
-  - Otherwise:              Zoom out
+  - If highlight exists:     Zoom to highlighted segment; remove highlight
+  - Otherwise:               Zoom out
 - Double click left:         Zoom out full
 - Shift + left/right:        Play
 - Mouse click outside axes:  Remove highlight
