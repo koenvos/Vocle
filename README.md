@@ -1,4 +1,4 @@
-Vocle is a Matlab tool to view, play and compare audio signals.
+Vocle is a Matlab tool to view, play out, and compare audio signals.
 
 Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior.  
 Advantages over spclab:
