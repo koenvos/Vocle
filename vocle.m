@@ -630,10 +630,10 @@ h_fig.WindowButtonUpFcn = '';
                 h_specgram{i} = figure(specgram_no+i);
                 h_specgram{i}.Position = config.specgram_Position{i};
             else
-                if ishandle(h_specgram{i})
-                    set(groot, 'CurrentFigure', h_specgram{i});
+                if ishandle(h_specgram{i}) && isempty(varargin)
+                    set(groot, 'CurrentFigure', h_specgram{i}); % does not bring figure to foreground
                 else
-                    h_specgram{i} = figure(specgram_no+i);
+                    h_specgram{i} = figure(specgram_no+i);      % brings figure to foreground
                 end
             end
             h_specgram{i}.CloseRequestFcn = @window_close_callback;
