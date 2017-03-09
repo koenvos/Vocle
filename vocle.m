@@ -626,7 +626,7 @@ h_fig.WindowButtonUpFcn = '';
         for i = 1:length(kk)
             % open figure and use position from config file
             if ( ~fig_exist(specgram_no+i) && isfield(config, 'specgram_Position') && ...
-                    length(config.specgram_Position) >= i ) || ~isempty(varargin)
+                    length(config.specgram_Position) >= i )
                 h_specgram{i} = figure(specgram_no+i);
                 h_specgram{i}.Position = config.specgram_Position{i};
             else
