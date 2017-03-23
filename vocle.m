@@ -77,6 +77,7 @@ zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
 ylim_margin = 1.1;
 min_abs_signal = 1e-99;
+min_selection_frac = 0.002;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 44100;
@@ -1014,20 +1015,24 @@ h_fig.WindowButtonUpFcn = '';
                 for kkk = 1:num_signals
                     delete(highlight_markers{kkk});
                 end
-                if toc(time_mouse_down) < 0.4
-                    update_selections(n_axes, 'toggle');
-                    if diff(highlight_range)
-                        spectrum_update;
-                        spectrogram_callback;
-                    end
+                update_selections(n_axes, 'toggle');
+                if diff(highlight_range)
+                    spectrum_update;
+                    spectrogram_callback;
                 end
             end
             last_action_was_highlight = 0;
         end
 
         function button_motion_callback(~, ~)
-            highlight_range = [highlight_start, get_mouse_pointer_time];
-            delta = abs(diff(highlight_range));
+            highlight_cur = get_mouse_pointer_time;
+            highlight_range_prelim = [highlight_start, highlight_cur];
+            delta = abs(diff(highlight_range_prelim));
+            % ignore short, tiny "selections"; they're most likely just clicks
+            if abs(delta) < min_selection_frac * diff(time_range_view) && toc(time_mouse_down) < 0.2
+                return;
+            end
+            highlight_range = highlight_range_prelim;
             if delta < 1
                 smpls = delta * config.fs;
                 if smpls < 1000
