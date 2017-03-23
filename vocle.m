@@ -711,11 +711,13 @@ h_fig.WindowButtonUpFcn = '';
                 specgram_place_axes(h_specgram{i});
             end
         end
-        ax(ishandle(ax) == 0) = [];
-        if length(ax) > 1
-            try
-                linkaxes(ax);
-            catch
+        if exist('ax', 'variable')
+            ax(ishandle(ax) == 0) = [];
+            if length(ax) > 1
+                try
+                    linkaxes(ax);
+                catch
+                end
             end
         end
         for i = length(kk)+1:length(h_specgram)
@@ -1015,10 +1017,12 @@ h_fig.WindowButtonUpFcn = '';
                 for kkk = 1:num_signals
                     delete(highlight_markers{kkk});
                 end
-                update_selections(n_axes, 'toggle');
-                if diff(highlight_range)
-                    spectrum_update;
-                    spectrogram_callback;
+                if toc(time_mouse_down) < 0.4
+                    update_selections(n_axes, 'toggle');
+                    if diff(highlight_range)
+                        spectrum_update;
+                        spectrogram_callback;
+                    end
                 end
             end
             last_action_was_highlight = 0;
