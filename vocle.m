@@ -811,6 +811,7 @@ h_fig.WindowButtonUpFcn = '';
             s = resample(s, playback_fs, config.fs, 50);
         elseif length(play_src) == 2
             % A/B test
+            rng('shuffle'); 
             play_src = play_src(randperm(2));
             s = {};
             play_time_range = 0;
