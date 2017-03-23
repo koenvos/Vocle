@@ -711,7 +711,7 @@ h_fig.WindowButtonUpFcn = '';
                 specgram_place_axes(h_specgram{i});
             end
         end
-        if exist('ax', 'variable')
+        if exist('ax', 'var')
             ax(ishandle(ax) == 0) = [];
             if length(ax) > 1
                 try
