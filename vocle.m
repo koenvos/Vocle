@@ -296,19 +296,22 @@ h_fig.WindowButtonUpFcn = '';
             title_str = 'Save selected signal';
         end
         file_types = {'*.wav'; '*.m4a'; '*.mat'};
-        kk = find(selected_axes);  % must be of length 1
-        [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, ['signal', num2str(kk), '.wav']);
-        if ischar(path_name) && ischar(file_name)
-            signal = get_current_signal(kk, 0);
-            if isempty(signal)
-                return;
-            end
-            if file_type_ix ~= length(file_types)
-                % audio file
-                audiowrite([path_name, file_name], signal, config.fs);
-            else
-                % MAT file
-                save([path_name, file_name], 'signal');
+        kk = find(selected_axes);
+        for i = 1:length(kk)
+            kkk = kk(i);
+            [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, ['signal', num2str(kkk), '.wav']);
+            if ischar(path_name) && ischar(file_name)
+                signal = get_current_signal(kkk, 0);
+                if isempty(signal)
+                    return;
+                end
+                if file_type_ix ~= length(file_types)
+                    % audio file
+                    audiowrite([path_name, file_name], signal, config.fs);
+                else
+                    % MAT file
+                    save([path_name, file_name], 'signal');
+                end
             end
         end
     end
@@ -330,14 +333,11 @@ h_fig.WindowButtonUpFcn = '';
         if sum(selected_axes) == 0
             h_spec_menu.Enable = 'off';
             h_specgram_menu.Enable = 'off';
+            h_save.Enable = 'off';
         else
             h_spec_menu.Enable = 'on';
             h_specgram_menu.Enable = 'on';
-        end
-        if sum(selected_axes) == 1
             h_save.Enable = 'on';
-        else
-            h_save.Enable = 'off';
         end
         update_play_button;
     end
