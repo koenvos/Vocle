@@ -296,9 +296,9 @@ h_fig.WindowButtonUpFcn = '';
             title_str = 'Save selected signal';
         end
         file_types = {'*.wav'; '*.m4a'; '*.mat'};
-        [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, 'signal.wav');
+        kk = find(selected_axes);  % must be of length 1
+        [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, ['signal', num2str(kk), '.wav']);
         if ischar(path_name) && ischar(file_name)
-            kk = find(selected_axes);  % must be of length 1
             signal = get_current_signal(kk, 0);
             if isempty(signal)
                 return;
