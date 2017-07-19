@@ -77,7 +77,7 @@ zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
 ylim_margin = 1.1;
 min_abs_signal = 1e-99;
-min_selection_frac = 0.002;
+min_selection_frac = 0.005;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 44100;
@@ -386,7 +386,7 @@ h_fig.WindowButtonUpFcn = '';
             plot(h_ax{kk}, t, s, 'ButtonDownFcn', @plot_button_down_callback);
             h_ax{kk}.UserData = kk;
             h_ax{kk}.Color = selection_color * selected_axes(kk) + axes_color * (1-selected_axes(kk));
-            h_ax{kk}.ButtonDownFcn = @axes_button_down_callback;
+            h_ax{kk}.ButtonDownFcn = @plot_button_down_callback;
             h_ax{kk}.Layer = 'top';
             h_ax{kk}.FontSize = axes_label_font_size;
             h_ax{kk}.TickLength(1) = 0.006;
@@ -1011,7 +1011,7 @@ h_fig.WindowButtonUpFcn = '';
             h_fig.WindowButtonUpFcn = '';
             h_fig.WindowButtonMotionFcn = '';
             text_segment.Visible = 'off';
-            if last_action_was_highlight 
+            if last_action_was_highlight
                 spectrum_update;
                 spectrogram_callback;
             else
@@ -1034,7 +1034,7 @@ h_fig.WindowButtonUpFcn = '';
             highlight_range_prelim = [highlight_start, highlight_cur];
             delta = abs(diff(highlight_range_prelim));
             % ignore short, tiny "selections"; they're most likely just clicks
-            if abs(delta) < min_selection_frac * diff(time_range_view) && toc(time_mouse_down) < 0.2
+            if delta < min_selection_frac * diff(time_range_view) && toc(time_mouse_down) < 0.25
                 return;
             end
             highlight_range = highlight_range_prelim;
