@@ -43,10 +43,10 @@ if verLessThan('matlab', 'R2014b')
     return;
 end
 
+global voctone_h_fig voctone_h_spec;
+
 % settings
-fig_no = 9372;
-spectrum_no = fig_no+1;
-specgram_no = fig_no+2;
+fig_no = 937280;
 axes_label_font_size = 8;
 left_margin = 42;
 right_margin = 22;
@@ -87,8 +87,6 @@ verbose = 0;
 
 % function-wide variables
 h_ax = [];
-h_spectrum = [];
-h_specgram = {};
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
@@ -105,27 +103,28 @@ if exist(config_file, 'file')
 end
 
 % open figure and use position from config file
-if ~fig_exist(fig_no) && isfield(config, 'Position')
-    h_fig = figure(fig_no);
-    h_fig.Position = config.Position;
-else
-    h_fig = figure(fig_no);
+if isempty(voctone_h_fig) || ~isgraphics(voctone_h_fig)
+    voctone_h_fig = figure(fig_no);
+    if isfield(config, 'Position')
+        voctone_h_fig.Position = config.Position;
+    end
 end
-clf;
-h_fig.NumberTitle = 'off';
-h_fig.Name = ' Vocle';
-h_fig.Color = figure_color;
-h_fig.ToolBar = 'none';
-h_fig.MenuBar = 'none';
-h_file = uimenu(h_fig, 'Label', '&File');
+clf(voctone_h_fig);
+voctone_h_fig.NumberTitle = 'off';
+voctone_h_fig.Name = ' Vocle';
+voctone_h_fig.Color = figure_color;
+voctone_h_fig.ToolBar = 'none';
+voctone_h_fig.MenuBar = 'none';
+h_file = uimenu(voctone_h_fig, 'Label', '&File', 'Callback', @menu_callback);
 uimenu(h_file, 'Label', 'Open', 'Callback', @open_file_callback);
 h_save = uimenu(h_file, 'Label', 'Save Signal', 'Callback', @save_file_callback);
 % the following line uses the undocumented function filemenufcn()... might break
 uimenu(h_file, 'Label', 'Save Figure', 'Callback', 'filemenufcn(gcbf, ''FileSaveAs'')');
-h_visualize = uimenu(h_fig, 'Label', '&Visualize');
-h_spec_menu = uimenu(h_visualize, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
+h_visualize = uimenu(voctone_h_fig, 'Label', '&Visualize', 'Callback', @menu_callback);
+h_spectrum_menu = uimenu(h_visualize, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
 h_specgram_menu = uimenu(h_visualize, 'Label', 'Spectrogram', 'Callback', @spectrogram_callback);
-h_settings = uimenu(h_fig, 'Label', '&Settings');
+h_close_all_spec = uimenu(h_visualize, 'Label', 'Close all', 'Callback', @window_close_all_callback);
+h_settings = uimenu(voctone_h_fig, 'Label', '&Settings', 'Callback', @menu_callback);
 h_fs = uimenu(h_settings, 'Label', 'Sampling Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
@@ -217,17 +216,33 @@ for k = 1:num_signals
     signals_max(k) = max(max(abs(stmp)), min_abs_signal);
 end
 
+write_config;
+if isempty(voctone_h_spec)
+    % allocate new graphics array for spectrum and spectrograms
+    voctone_h_spec = gobjects(num_signals+1, 1);
+else
+    % remove deleted handles
+    voctone_h_spec = voctone_h_spec(isgraphics(voctone_h_spec));
+    % add "old" to figure titles
+    for k = 1:length(voctone_h_spec)
+        voctone_h_spec(k).Name = [voctone_h_spec(k).Name, ' old'];
+    end    
+    % allocate new graphics array and append old ones
+    voctone_h_spec = [gobjects(num_signals+1, 1); voctone_h_spec];
+end
+
+
 % add elements to UI
 h_ax = cell(num_signals, 1);
 for k = 1:num_signals
     h_ax{k} = axes;
     h_ax{k}.Units = 'pixels';
 end
-text_segment = uicontrol(h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
+text_segment = uicontrol(voctone_h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
     'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
-time_slider = uicontrol(h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', axes_color);
+time_slider = uicontrol(voctone_h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', axes_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
-play_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
+play_button = uicontrol(voctone_h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
 
 update_layout;
 
@@ -235,21 +250,17 @@ update_layout;
 update_axes_selections([], 'reset');
 set_time_range([0, inf], 1);
 
-write_config;
-
 % set figure callbacks
-h_fig.CloseRequestFcn = @window_close_callback;
-h_fig.SizeChangedFcn = @window_resize_callback;
-h_fig.ButtonDownFcn = @window_button_down_callback;
-h_fig.WindowScrollWheelFcn = @window_scroll_callback;
-h_fig.WindowButtonUpFcn = '';
-
-
+voctone_h_fig.CloseRequestFcn = @window_close_all_callback;
+voctone_h_fig.SizeChangedFcn = @window_resize_callback;
+voctone_h_fig.ButtonDownFcn = @window_button_down_callback;
+voctone_h_fig.WindowScrollWheelFcn = @window_scroll_callback;
+voctone_h_fig.WindowButtonUpFcn = '';
 
     % position UI elements
     function update_layout
-        h_width = h_fig.Position(3);
-        h_height = h_fig.Position(4);
+        h_width = voctone_h_fig.Position(3);
+        h_height = voctone_h_fig.Position(4);
         width = h_width - left_margin - right_margin;
         height = (h_height - top_margin - bottom_margin - (num_signals-1) * vert_spacing) / max(num_signals, 1);
         if height > 0 && width > 0
@@ -333,21 +344,6 @@ h_fig.WindowButtonUpFcn = '';
         for kk = 1:num_signals
             h_ax{kk}.Color = selection_color * selected_axes(kk) + axes_color * (1-selected_axes(kk));
         end
-        if sum(selected_axes) == 0
-            h_spec_menu.Enable = 'off';
-            h_specgram_menu.Enable = 'off';
-            h_save.Enable = 'off';
-        else
-            h_spec_menu.Enable = 'on';
-            h_specgram_menu.Enable = 'on';
-            h_save.Enable = 'on';
-        end
-        if sum(selected_axes) > 1
-            h_save.Label = 'Save Signals';
-        else
-            h_save.Label = 'Save Signal';
-        end
-        update_play_button;
     end
 
     function update_play_button
@@ -364,7 +360,30 @@ h_fig.WindowButtonUpFcn = '';
             play_button.String = 'Play';
             play_button.Enable = 'off';
         end
-    end        
+    end
+
+    function menu_callback(~, ~)
+        % update menu strings where necessary
+        if sum(selected_axes) == 0
+            h_spectrum_menu.Enable = 'off';
+            h_specgram_menu.Enable = 'off';
+            h_save.Enable = 'off';
+        else
+            h_spectrum_menu.Enable = 'on';
+            h_specgram_menu.Enable = 'on';
+            h_save.Enable = 'on';
+        end
+        if sum(selected_axes) > 1
+            h_save.Label = 'Save Signals';
+        else
+            h_save.Label = 'Save Signal';
+        end
+        if any(isgraphics(voctone_h_spec))
+            h_close_all_spec.Enable = 'on';
+        else
+            h_close_all_spec.Enable = 'off';
+        end
+    end
 
     % plot signals
     function plot_signals
@@ -424,27 +443,32 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     % Spectrum
-    function spectrum_callback(varargin)
-        % open figure and use position from config file
-        if ~fig_exist(spectrum_no) && isfield(config, 'spectrum_Position')
-            h_spectrum = figure(spectrum_no);
-            h_spectrum.Position = config.spectrum_Position;
+    function spectrum_callback(varargin)   % varargin is non-empty if called from menu
+        if isgraphics(voctone_h_spec(1))
+            % figure already exists
+            if ~isempty(varargin)
+                % bring to foreground
+                figure(voctone_h_spec(1).Number);
+            end
         else
-            h_spectrum = figure(spectrum_no);
+            voctone_h_spec(1) = figure;
+            if isfield(config, 'spec_Position')
+                voctone_h_spec(1).Position = config.spec_Position{1};
+            end
         end
-        h_spectrum.CloseRequestFcn = @window_close_callback;
-        h_spectrum.NumberTitle = 'off';
-        h_spectrum.MenuBar = 'none';
-        h_spectrum.ToolBar = 'figure';
-        h_spectrum.Name = ' Vocle Spectrum';
-        h_spectrum.Color = figure_color;
+        voctone_h_spec(1).CloseRequestFcn = @window_close_callback;
+        voctone_h_spec(1).NumberTitle = 'off';
+        voctone_h_spec(1).MenuBar = 'none';
+        voctone_h_spec(1).ToolBar = 'figure';
+        voctone_h_spec(1).Name = ' Vocle Spectrum';
+        voctone_h_spec(1).Color = figure_color;
         spectrum_update;
     end
 
     % compute and display spectra
     function spectrum_update
-        if ishandle(h_spectrum)
-            clf(h_spectrum);
+        if ishandle(voctone_h_spec(1))
+            clf(voctone_h_spec(1));
             kk = find(selected_axes);
             if isempty(kk)
                 return;
@@ -470,7 +494,7 @@ h_fig.WindowButtonUpFcn = '';
             if isempty(s)
                 return;
             end
-            ax_spec = axes('Parent', h_spectrum);
+            ax_spec = axes('Parent', voctone_h_spec(1));
             if strcmp(get(findall(h_f_scale.Children, 'Label', 'Linear'), 'Checked'), 'on')
                 plot_spec_lin(s);
             else
@@ -506,10 +530,10 @@ h_fig.WindowButtonUpFcn = '';
             f_ = sort(fxw(:));
             v = f_(ceil(length(f_)/100));  % 1 percentile
             axis(ax_spec, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
-            h_zoom = zoom(h_spectrum);
+            h_zoom = zoom(voctone_h_spec(1));
             h_zoom.Enable = 'on';
             h_zoom.ActionPostCallback  = '';
-            h_spectrum.ResizeFcn = @spec_place_axes;
+            voctone_h_spec(1).ResizeFcn = @spec_place_axes;
             spec_place_axes;
         end
 
@@ -552,10 +576,10 @@ h_fig.WindowButtonUpFcn = '';
             f_ = sort(fxw(:));
             v = f_(ceil(length(f_)/100));  % 1 percentile
             axis(ax_spec, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
-            h_zoom = zoom(h_spectrum);
+            h_zoom = zoom(voctone_h_spec(1));
             h_zoom.Enable = 'on';
             h_zoom.ActionPostCallback = @spec_set_xticks;
-            h_spectrum.ResizeFcn = @spec_set_xticks;
+            voctone_h_spec(1).ResizeFcn = @spec_set_xticks;
             spec_set_xticks;
 
             function spec_set_xticks(varargin)
@@ -591,8 +615,8 @@ h_fig.WindowButtonUpFcn = '';
         
         function spec_place_axes(varargin)
             ax_spec.Units = 'pixels';
-            h_width = h_spectrum.Position(3);
-            h_height = h_spectrum.Position(4);
+            h_width = voctone_h_spec(1).Position(3);
+            h_height = voctone_h_spec(1).Position(4);
             width = h_width - left_margin - right_margin;
             height = h_height - top_margin - bottom_margin_spec;
             if height > 0 && width > 0
@@ -619,45 +643,40 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     % Spectrogram
-    function spectrogram_callback(varargin)
+    function spectrogram_callback(varargin)   % varargin is non-empty if called from menu
         % see if any spectrogram windows are open
-        specgram_open = 0;
-        for i = 1:length(h_specgram)
-            if ishandle(h_specgram{i})
-                specgram_open = 1;
-                break;
-            end
-        end
+        specgram_open = any(isgraphics(voctone_h_spec(1+(1:num_signals))));
         if isempty(varargin) && ~specgram_open
             return;
         end
         kk = find(selected_axes);
+        ax = gobjects(length(kk), 1);
         for i = 1:length(kk)
-            % open figure and use position from config file
-            if ( ~fig_exist(specgram_no+i) && isfield(config, 'specgram_Position') && ...
-                    length(config.specgram_Position) >= i )
-                h_specgram{i} = figure(specgram_no+i);
-                h_specgram{i}.Position = config.specgram_Position{i};
+            if isgraphics(voctone_h_spec(i+1))
+                % figure already exists
+                if ~isempty(varargin)
+                    % bring to foreground
+                    figure(voctone_h_spec(i+1).Number);
+                end
             else
-                if length(h_specgram) >= i && ishandle(h_specgram{i}) && isempty(varargin)
-                    set(groot, 'CurrentFigure', h_specgram{i}); % does not bring figure to foreground
-                else
-                    h_specgram{i} = figure(specgram_no+i);      % brings figure to foreground
+                voctone_h_spec(i+1) = figure;
+                if isfield(config, 'spec_Position') && length(config.spec_Position) >= i+1
+                    voctone_h_spec(i+1).Position = config.spec_Position{i+1};
                 end
             end
-            h_specgram{i}.CloseRequestFcn = @window_close_callback;
-            h_specgram{i}.NumberTitle = 'off';
-            h_specgram{i}.MenuBar = 'none';
-            h_specgram{i}.ToolBar = 'figure';
-            h_specgram{i}.Name = [' Vocle Spectrogram - Signal ', num2str(kk(i))];
-            h_specgram{i}.Color = figure_color;
-            clf(h_specgram{i});
-            h_zoom = zoom(h_specgram{i});
+            voctone_h_spec(i+1).CloseRequestFcn = @window_close_callback;
+            voctone_h_spec(i+1).NumberTitle = 'off';
+            voctone_h_spec(i+1).MenuBar = 'none';
+            voctone_h_spec(i+1).ToolBar = 'figure';
+            voctone_h_spec(i+1).Name = [' Vocle Spectrogram - Signal ', num2str(kk(i))];
+            voctone_h_spec(i+1).Color = figure_color;
+            clf(voctone_h_spec(i+1));
+            h_zoom = zoom(voctone_h_spec(i+1));
             h_zoom.Enable = 'on';
             h_zoom.ActionPostCallback  = '';
-            h_specgram{i}.ResizeFcn = @specgram_place_axes;
-            
-            ax(i) = axes('Parent', h_specgram{i});
+            voctone_h_spec(i+1).ResizeFcn = @specgram_place_axes;
+
+            ax(i) = axes('Parent', voctone_h_spec(i+1));
             win_len_ms = sscanf(get(findall(h_sg_win.Children, 'Checked', 'on'), 'Label'), '%d ms');
             step_ms = min(win_len_ms/20, 1) ;
             [s, time_range] = get_current_signal(kk(i), 0, win_len_ms / 2);
@@ -710,17 +729,17 @@ h_fig.WindowButtonUpFcn = '';
                 F = [F, F(:, end)];
                 pcolor(ax(i), t, fr/1e3, F);
                 ax(i).XLim = [t(1), t(end)];
-                ylabel('kHz');
-                shading 'flat';
+                ylabel(ax(i), 'kHz');
+                shading(ax(i), 'flat');
                 colormap(ax(i), 'default')
-                c = colorbar;
+                c = colorbar(ax(i));
                 c.Label.String = 'dB';
                 ax(i).FontSize = axes_label_font_size;
-                specgram_place_axes(h_specgram{i});
+                specgram_place_axes(voctone_h_spec(i+1));
             end
         end
         if exist('ax', 'var')
-            ax(ishandle(ax) == 0) = [];
+            ax(~isgraphics(ax)) = [];
             if length(ax) > 1
                 try
                     linkaxes(ax);
@@ -728,13 +747,14 @@ h_fig.WindowButtonUpFcn = '';
                 end
             end
         end
-        for i = length(kk)+1:length(h_specgram)
-            if ishandle(h_specgram{i})
-                close(h_specgram{i});
+        for i = length(kk)+1:num_signals
+            if isgraphics(voctone_h_spec(i+1))
+                close(voctone_h_spec(i+1));
             end
         end
+        % bring main window back to foreground, unless called from menu
         if isempty(varargin)
-            figure(h_fig);
+            figure(voctone_h_fig);
         end
     end
 
@@ -877,7 +897,7 @@ h_fig.WindowButtonUpFcn = '';
     end
         
     function t = get_mouse_pointer_time
-        frac = (h_fig.CurrentPoint(1) - left_margin) / max(h_fig.Position(3) - left_margin - right_margin, 1);
+        frac = (voctone_h_fig.CurrentPoint(1) - left_margin) / max(voctone_h_fig.Position(3) - left_margin - right_margin, 1);
         t = time_range_view(1) + frac * diff(time_range_view);
     end
 
@@ -948,7 +968,7 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     function plot_button_down_callback(~, ~)
-        if strcmp(h_fig.SelectionType, 'normal')
+        if strcmp(voctone_h_fig.SelectionType, 'normal')
             kk = get(gca, 'UserData');
             t = get_mouse_pointer_time * config.fs;
             % linearly interpolate
@@ -966,18 +986,18 @@ h_fig.WindowButtonUpFcn = '';
     function axes_button_down_callback(src, ~)
         n_axes = src.UserData;
         if verbose
-            disp(['mouse click on axes ', num2str(n_axes), ', type: ' h_fig.SelectionType, ...
-                ', previous: ', last_button_down, ', modifier: ' cell2mat(h_fig.CurrentModifier)]);
+            disp(['mouse click on axes ', num2str(n_axes), ', type: ' voctone_h_fig.SelectionType, ...
+                ', previous: ', last_button_down, ', modifier: ' cell2mat(voctone_h_fig.CurrentModifier)]);
         end
         % deal with different types of mouse clicks
-        switch(h_fig.SelectionType)
+        switch(voctone_h_fig.SelectionType)
             case 'normal'
                 % left mouse: start highlight, move indicator to current axes, setup mouse callbacks
                 time_mouse_down = tic;
                 highlight_start = get_mouse_pointer_time;
                 text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
-                h_fig.WindowButtonUpFcn = @button_up_callback;
-                h_fig.WindowButtonMotionFcn = @button_motion_callback;
+                voctone_h_fig.WindowButtonUpFcn = @button_up_callback;
+                voctone_h_fig.WindowButtonMotionFcn = @button_motion_callback;
                 for kk = 1:num_signals
                     highlight_markers{kk} = line([1, 1] * highlight_start, 2 * h_ax{kk}.YLim, ...
                         'Parent', h_ax{kk}, 'Color', marker_color, 'HitTest', 'off');
@@ -1011,13 +1031,13 @@ h_fig.WindowButtonUpFcn = '';
                         start_play;
                 end
         end
-        if ~strcmp(h_fig.SelectionType, 'open')
-            last_button_down = h_fig.SelectionType;
+        if ~strcmp(voctone_h_fig.SelectionType, 'open')
+            last_button_down = voctone_h_fig.SelectionType;
         end
 
         function button_up_callback(~, ~)
-            h_fig.WindowButtonUpFcn = '';
-            h_fig.WindowButtonMotionFcn = '';
+            voctone_h_fig.WindowButtonUpFcn = '';
+            voctone_h_fig.WindowButtonMotionFcn = '';
             text_segment.Visible = 'off';
             if last_action_was_highlight
                 spectrum_update;
@@ -1087,7 +1107,7 @@ h_fig.WindowButtonUpFcn = '';
         config.fs = str2double(src.Label);
         set(findall(h_fs.Children, 'Checked', 'on'), 'Checked', 'off');
         src.Checked = 'on';
-        write_config();
+        write_config;
         highlight_range = highlight_range * fs_old / config.fs;
         set_time_range(time_range_view * fs_old / config.fs, 1);
         spectrum_update;
@@ -1109,39 +1129,29 @@ h_fig.WindowButtonUpFcn = '';
     end
 
     function window_resize_callback(~, ~)
-        update_layout();
+        update_layout;
+        write_config;
     end
 
-    function window_close_callback(src, ~)
-        write_config();
-        if src.Number == fig_no
-            % when closing main window, also close secondary windows
-            if ishandle(h_spectrum)
-                close(h_spectrum);
-            end
-            for i = 1:length(h_specgram)
-                if ishandle(h_specgram{i})
-                    close(h_specgram{i});
-                end
-            end
-        end
+    function window_close_callback(~, ~)
+        write_config;
         closereq;
     end
 
-    function e = fig_exist(num)
-        r = groot;
-        e = ~isempty(r.Children) && sum([r.Children(:).Number] == num);
+    function window_close_all_callback(src, ~)
+        write_config;
+        close(voctone_h_spec(isgraphics(voctone_h_spec)));
+        if src == voctone_h_fig
+            closereq;
+        end
     end
 
     function write_config
         if verbose
             disp('save config');
         end
-        if ishandle(h_fig)
-            config.Position = h_fig.Position;
-        end
-        if ishandle(h_spectrum)
-            config.spectrum_Position = h_spectrum.Position;
+        if isgraphics(voctone_h_fig)
+            config.Position = voctone_h_fig.Position;
         end
         if ishandle(h_sg_win)
             config.specgram_win = get(findall(h_sg_win.Children, 'Checked', 'on'), 'Label');
@@ -1149,9 +1159,9 @@ h_fig.WindowButtonUpFcn = '';
         if ishandle(h_f_scale)
             config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
         end
-        for i = 1:length(h_specgram)
-            if ishandle(h_specgram{i})
-                config.specgram_Position{i} = h_specgram{i}.Position;
+        for i = 1:num_signals+1
+            if ishandle(voctone_h_spec(i))
+                config.spec_Position{i} = voctone_h_spec(i).Position;
             end
         end
         save(config_file, 'config');
