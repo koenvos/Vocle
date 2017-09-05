@@ -77,14 +77,21 @@ zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
 ylim_margin = 1.1;
 min_abs_signal = 1e-99;
+<<<<<<< 018ca789407fa83f1b288e518b6941f76f229e9a
 min_selection_frac = 0.005;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
 default_fs = 48000;
 playback_fs = 44100;
+=======
+min_selection_frac = 0.002;
+file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];  % in menu
+default_fs = 48000;  % of input signal, assumed unless otherwise indicated
+playback_fs = 44100; % of signal played to soundcard
+>>>>>>> on save, auto scale signals to avoid clipping
 playback_bits = 24;
 playback_dBov = -1;
-playback_cursor_delay_ms = 100;
-playback_silence_betwee_A_B_ms = 400;
+playback_cursor_delay_ms = 50;
+playback_silence_betwee_A_B_ms = 500;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
 spectrum_perc_fc_Hz = 500;
@@ -234,10 +241,11 @@ text_segment = uicontrol(h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
 time_slider = uicontrol(h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', axes_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
 play_button = uicontrol(h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
+
 update_layout;
 
 % show signals
-update_selections([], 'reset');
+update_axes_selections([], 'reset');
 set_time_range([0, inf], 1);
 
 write_config;
@@ -248,6 +256,8 @@ h_fig.SizeChangedFcn = @window_resize_callback;
 h_fig.ButtonDownFcn = @window_button_down_callback;
 h_fig.WindowScrollWheelFcn = @window_scroll_callback;
 h_fig.WindowButtonUpFcn = '';
+
+
 
     % position UI elements
     function update_layout
@@ -307,6 +317,12 @@ h_fig.WindowButtonUpFcn = '';
                 end
                 if file_type_ix ~= length(file_types)
                     % audio file
+                    % avoid clipping
+                    max_abs = max(abs(signal(:)));
+                    if max_abs > 1
+                        signal = signal / max_abs;
+                        warning(['Reduced signal ', num2str(kkk), ' by ', num2str(20*log10(max_abs), 3), ' dB to avoid clipping'])
+                    end
                     audiowrite([path_name, file_name], signal, config.fs);
                 else
                     % MAT file
@@ -316,7 +332,7 @@ h_fig.WindowButtonUpFcn = '';
         end
     end
 
-    function update_selections(ind, type)
+    function update_axes_selections(ind, type)
         if num_signals == 1
             selected_axes = 1;
         else
@@ -930,7 +946,7 @@ h_fig.WindowButtonUpFcn = '';
                 if isempty(highlight_patches{kk})
                     highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), ...
                         2 * kron(h_ax{kk}.YLim, [1, 1]), highlight_color, 'Parent', h_ax{kk}, ...
-                        'EdgeColor', marker_color, 'LineWidth', 0.3, 'FaceAlpha', 0.4, 'HitTest', 'off');
+                        'EdgeColor', marker_color, 'LineWidth', 0.3, 'FaceAlpha', 0.25, 'HitTest', 'off');
                     uistack(highlight_patches{kk}, 'bottom');
                 else
                     highlight_patches{kk}.Vertices(:, 1) = highlight_range([1, 2, 2, 1]);
@@ -1019,7 +1035,7 @@ h_fig.WindowButtonUpFcn = '';
                     delete(highlight_markers{kkk});
                 end
                 if toc(time_mouse_down) < 0.4
-                    update_selections(n_axes, 'toggle');
+                    update_axes_selections(n_axes, 'toggle');
                     if diff(highlight_range)
                         spectrum_update;
                         spectrogram_callback;
