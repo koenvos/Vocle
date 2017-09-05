@@ -77,17 +77,10 @@ zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
 ylim_margin = 1.1;
 min_abs_signal = 1e-99;
-<<<<<<< 018ca789407fa83f1b288e518b6941f76f229e9a
-min_selection_frac = 0.005;
-file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];
-default_fs = 48000;
-playback_fs = 44100;
-=======
 min_selection_frac = 0.002;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];  % in menu
-default_fs = 48000;  % of input signal, assumed unless otherwise indicated
+default_fs = 48000;  % of input signal, assumed unless otherwise indicated or remembered
 playback_fs = 44100; % of signal played to soundcard
->>>>>>> on save, auto scale signals to avoid clipping
 playback_bits = 24;
 playback_dBov = -1;
 playback_cursor_delay_ms = 50;
@@ -354,6 +347,11 @@ h_fig.WindowButtonUpFcn = '';
             h_spec_menu.Enable = 'on';
             h_specgram_menu.Enable = 'on';
             h_save.Enable = 'on';
+        end
+        if sum(selected_axes) > 1
+            h_save.Label = 'Save Signals';
+        else
+            h_save.Label = 'Save Signal';
         end
         update_play_button;
     end
