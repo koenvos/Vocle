@@ -10,16 +10,16 @@ function vocle(varargin)
 %   - Scroll wheel zooming
 %   - Use sampling rate info from input files, if available
 %   - Remember window locations and sampling rate
-%   - Auto update spectrum when highlighting a new segment
+%   - Auto update spectrum and spectrogram when highlighting a new segment
 %   - Option to display spectrum on perceptual frequency scale
 %   - Fix some spclab features that broke over time by changes in Matlab
 %
 %  Usage
-%     Vocle([fs,] x, y);         Open vocle with signals x and y, optionally setting the sampling rate to fs 
-%     Vocle('x.wav', 'y.mp3');   Open vocle with files x.wav and y.mp3
+%     vocle([fs,] x, y);         Open vocle with signals x and y, optionally setting the sampling rate to fs 
+%     vocle('x.wav', 'y.mp3');   Open vocle with files x.wav and y.mp3
 %  Vocle reads unrecognized file types as headerless 16-bit mono files. For these you can specify a
-%  sampling rate as the first argument (or just set the sampling rate later in the menu). You may
-%  also mix signals and files in the input arguments.
+%  sampling rate as the first argument (or set the sampling rate later in the menu). You may also
+%  use a combination of signals and files in the input arguments.
 % 
 %  Navigation
 %     Left mouse:                Toggle axes selection
@@ -34,16 +34,9 @@ function vocle(varargin)
 %
 %  Vocle requires Matlab 2014b or newer.
 
-%  Copyright 2016 Koen Vos
-
-% todo:
-% - open multiple files --> 
-% - remember selection, zoom and highlight if main window was already open?
-% - "keep" option, to store a signal and add it to the next call to vocle?
-%   --> show in a different color
-%   --> option to remove signals
-% - auto align function?
-% - Info menu item
+%  License: Vocle is free, open source and, to my knowledge, unencumbered by patents. Feel free to use 
+%  Vocle in any way you want, but don't blame me if it blows out your ears or other unpleasentness happens.
+%  Copyright 2016, 2017 Koen Vos
 
 if verLessThan('matlab', 'R2014b')
     disp('Sorry, your Matlab version is too old. Vocle requires at least R2014b..')
@@ -125,14 +118,15 @@ h_fig.Color = figure_color;
 h_fig.ToolBar = 'none';
 h_fig.MenuBar = 'none';
 h_file = uimenu(h_fig, 'Label', '&File');
-uimenu(h_file, 'Label', '&Open', 'Callback', @open_file_callback);
+uimenu(h_file, 'Label', 'Open', 'Callback', @open_file_callback);
 h_save = uimenu(h_file, 'Label', 'Save Signal', 'Callback', @save_file_callback);
 % the following line uses the undocumented function filemenufcn()... might break
 uimenu(h_file, 'Label', 'Save Figure', 'Callback', 'filemenufcn(gcbf, ''FileSaveAs'')');
-h_spec_menu = uimenu(h_fig, 'Label', '&Spectrum', 'Callback', @spectrum_callback);
-h_specgram_menu = uimenu(h_fig, 'Label', 'Spectro&gram', 'Callback', @spectrogram_callback);
-h_settings = uimenu(h_fig, 'Label', 'Se&ttings');
-h_fs = uimenu(h_settings, 'Label', 'Sampling &Rate');
+h_visualize = uimenu(h_fig, 'Label', '&Visualize');
+h_spec_menu = uimenu(h_visualize, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
+h_specgram_menu = uimenu(h_visualize, 'Label', 'Spectrogram', 'Callback', @spectrogram_callback);
+h_settings = uimenu(h_fig, 'Label', '&Settings');
+h_fs = uimenu(h_settings, 'Label', 'Sampling Rate');
 for k = 1:length(file_fs)
     uimenu(h_fs, 'Label', num2str(file_fs(k)), 'Callback', @change_fs_callback);
 end
@@ -146,7 +140,7 @@ end
 set(findall(h_f_scale.Children, 'Label', config.spectrum_scale), 'Checked', 'on');
 h_sg_win = uimenu(h_settings, 'Label', 'Spectrogram Window');
 for k = 1:length(specgram_win_ms)
-    uimenu(h_sg_win, 'Label', [num2str(specgram_win_ms(k)), ' ms'], 'Callback', @change_sg_win_callback);
+    uimenu(h_sg_win, 'Label', [num2str(specgram_win_ms(k)), ' ms'], 'Callback', @change_spectrogram_win_callback);
 end
 if ~isfield(config, 'specgram_win') || isempty(findall(h_sg_win.Children, 'Label', config.specgram_win))
     % default
@@ -1100,7 +1094,7 @@ h_fig.WindowButtonUpFcn = '';
         spectrogram_callback;
     end
 
-    function change_sg_win_callback(src, ~)
+    function change_spectrogram_win_callback(src, ~)
         set(findall(h_sg_win.Children, 'Checked', 'on'), 'Checked', 'off');
         src.Checked = 'on';
         spectrogram_callback;
