@@ -1159,7 +1159,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
         if ishandle(h_f_scale)
             config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
         end
-        for i = 1:num_signals+1
+        for i = 1:length(voctone_h_spec)
             if ishandle(voctone_h_spec(i))
                 config.spec_Position{i} = voctone_h_spec(i).Position;
             end
