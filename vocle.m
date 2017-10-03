@@ -99,15 +99,13 @@ play_cursors = {};
 config = [];
 config_file = [which('vocle'), 'at'];
 if exist(config_file, 'file')
-    load(config_file);
+    load(config_file, 'config');
 end
 
 % open figure and use position from config file
-if isempty(voctone_h_fig) || ~isgraphics(voctone_h_fig)
-    voctone_h_fig = figure(fig_no);
-    if isfield(config, 'Position')
-        voctone_h_fig.Position = config.Position;
-    end
+voctone_h_fig = figure(fig_no);
+if isfield(config, 'Position')
+    voctone_h_fig.Position = config.Position;
 end
 clf(voctone_h_fig);
 voctone_h_fig.NumberTitle = 'off';
