@@ -1048,6 +1048,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 end
                 if toc(time_mouse_down) < 0.4
                     update_axes_selections(n_axes, 'toggle');
+                    update_play_button;
                     if diff(highlight_range)
                         spectrum_update;
                         spectrogram_callback;
