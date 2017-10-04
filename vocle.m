@@ -77,7 +77,7 @@ playback_fs = 44100; % of signal played to soundcard
 playback_bits = 24;
 playback_dBov = -1;
 playback_cursor_delay_ms = 50;
-playback_silence_betwee_A_B_ms = 500;
+playback_silence_between_A_B_ms = 500;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
 spectrum_perc_fc_Hz = 500;
@@ -820,6 +820,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             for m = 1:length(play_cursors)
                 delete(play_cursors{m});
             end
+            play_cursors = {};
         end
         if isempty(play_src)
             play_src = find(selected_axes);
@@ -850,7 +851,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
                 s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
             end
-            s = [s{1}; zeros(round(config.fs/1e3 * playback_silence_betwee_A_B_ms), 2); s{2}]; 
+            s = [s{1}; zeros(round(config.fs/1e3 * playback_silence_between_A_B_ms), 2); s{2}]; 
             s = resample(s, playback_fs, config.fs, 50);
         end
         player = audioplayer(s, playback_fs, playback_bits);
@@ -866,6 +867,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             for mm = 1:length(play_cursors)
                 delete(play_cursors{mm});
             end
+            play_cursors = {};
             play_button.Callback = @start_play;
             if length(play_src) == 2
                 if play_src(1) > play_src(2)
@@ -880,8 +882,8 @@ voctone_h_fig.WindowButtonUpFcn = '';
 
         function draw_play_cursors(~, ~)
             t = play_time_range(1) + toc(playback_start_time) - playback_cursor_delay_ms / 1e3;
-            if length(play_src) == 2 && t > play_time_range(2) + 0.5 * playback_silence_betwee_A_B_ms/1e3
-                t = t - diff(play_time_range) - playback_silence_betwee_A_B_ms/1e3;
+            if length(play_src) == 2 && t > play_time_range(2) + 0.5 * playback_silence_between_A_B_ms/1e3
+                t = t - diff(play_time_range) - playback_silence_between_A_B_ms/1e3;
             end
             t = min(max(t, play_time_range(1)), play_time_range(2));
             for mm = 1:length(play_cursors)
