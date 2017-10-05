@@ -149,7 +149,7 @@ set(findall(h_sg_win.Children, 'Label', config.specgram_win), 'Checked', 'on');
 % process inputs
 % check if first argument is sampling rate, otherwise use the config value
 first_arg_fs = 0;
-if ~isempty(varargin) && isscalar(varargin{1}) && isnumeric(varargin{1})
+if length(varargin)>1 && isscalar(varargin{1}) && isnumeric(varargin{1})
     config.fs = varargin{1};
     first_arg_fs = 1;
 elseif ~isfield(config, 'fs')
@@ -188,7 +188,7 @@ for k = 1:num_signals
         end
     end
 end
-if sum(file_fs)
+if any(file_fs)
     config.fs = max(max(file_fs), first_arg_fs * config.fs);
 end
 set(findall(h_fs.Children, 'Label', num2str(config.fs)), 'Checked', 'on');
@@ -443,11 +443,8 @@ voctone_h_fig.WindowButtonUpFcn = '';
     % Spectrum
     function spectrum_callback(varargin)   % varargin is non-empty if called from menu
         if isgraphics(voctone_h_spec(1))
-            % figure already exists
-            if ~isempty(varargin)
-                % bring to foreground
-                figure(voctone_h_spec(1).Number);
-            end
+            % figure already exists, bring to foreground
+            figure(voctone_h_spec(1).Number);
         else
             voctone_h_spec(1) = figure;
             if isfield(config, 'spec_Position')
@@ -856,7 +853,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
         player = audioplayer(s, playback_fs, playback_bits);
         player.TimerFcn = @draw_play_cursors;
-        player.TimerPeriod = 0.02;
+        player.TimerPeriod = 0.05;
         playback_start_time = tic;
         draw_play_cursors;
         player.StopFcn = @stop_play;
@@ -930,7 +927,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             slider_listener.Enabled = 0;
             time_slider.Value = min(max(val, 0), 1);
             slider_listener.Enabled = 1;
-            frac_time = time_diff / max_time;
+            frac_time = min(time_diff / max_time, 1);
             if 1
                 % zooming out fully, the slider should take up the entire width; it doesn't
                 time_slider.SliderStep = [0.1, 1] * frac_time;
@@ -1118,14 +1115,14 @@ voctone_h_fig.WindowButtonUpFcn = '';
     function change_spectrogram_win_callback(src, ~)
         set(findall(h_sg_win.Children, 'Checked', 'on'), 'Checked', 'off');
         src.Checked = 'on';
-        spectrogram_callback;
+        spectrogram_callback(1);
         write_config;
     end
 
     function spec_scale_callback(src, ~)
         set(findall(h_f_scale.Children, 'Checked', 'on'), 'Checked', 'off');
         src.Checked = 'on';
-        spectrum_update;
+        spectrum_callback;
         write_config;
     end
 
