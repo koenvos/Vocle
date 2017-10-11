@@ -1103,8 +1103,10 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 else
                     str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(smpls, '%.0f'), ')'];
                 end
-            else
+            elseif delta < 100
                 str = [num2str(delta, '%.3f'), ' sec'];
+            else
+                str = [num2str(delta, '%.0f'), ' sec'];
             end
             text_segment.String = str;
             text_segment.Visible = 'on';
