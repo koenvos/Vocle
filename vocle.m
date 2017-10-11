@@ -173,7 +173,7 @@ for k = 1:num_signals
         else
             try
                 if 0
-                    % read directly as doubles (seems slower)
+                    % read as doubles (seems slower)
                     [signals{k}, file_fs(k)] = audioread(arg);
                 else
                     % read as native and convert to doubles (seems faster)
@@ -188,7 +188,8 @@ for k = 1:num_signals
                 end
             catch
                 % read as shorts without header
-                disp(['Reading a raw shorts: ', arg]);
+                arg_split = strsplit(arg, '\\');
+                disp(['Reading as raw int16: ', arg_split{end}]);
                 fid = fopen(arg, 'rb');
                 signals{k} = single(fread(fid, inf, 'short') / 32768);
                 fclose(fid);
@@ -206,8 +207,9 @@ end
 if any(file_fs)
     config.fs = max(max(file_fs), first_arg_fs * config.fs);
 end
+signals_fs = file_fs;
+signals_fs(file_fs == 0) = config.fs;
 set(findall(h_fs.Children, 'Label', num2str(config.fs)), 'Checked', 'on');
-tic
 for k = 1:num_signals
     if ~isreal(signals{k})
         disp(['Warning: signal ', num2str(k), ' is complex; ignoring imaginary part']);
@@ -217,16 +219,9 @@ for k = 1:num_signals
         disp(['Warning: signal ', num2str(k), ' contains NaNs; replacing these by zeros']);
         signals{k}(isnan(signals{k})) = 0;
     end
-    % resample (doesn't support single, so need to convert back and forth)
-    if file_fs(k)
-        % upsample to highest sampling rate
-        signals{k} = single(resample(double(signals{k}), config.fs, file_fs(k)));
-    elseif first_arg_fs
-        signals{k} = single(resample(double(signals{k}), config.fs, varargin{1}));
-    end
-    signal_lengths(k) = size(signals{k}, 1);
+    signal_lengths(k, 1) = size(signals{k}, 1);
     
-    % for long signals, iteratively reduce 4x in length
+    % for long signals, repeatedly reduce 4x in length and store
     level = 1;
     [L, M] = size(signals{k, level});
     while L > max_horizontal_resolution
@@ -248,7 +243,6 @@ for k = 1:num_signals
     signals_positive(k) = max(s) > 0;
     signals_max(k) = max(max(abs(s)), min_abs_signal);
 end
-toc
 
 write_config;
 if isempty(voctone_h_spec)
@@ -343,7 +337,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             kkk = kk(i);
             [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, ['signal', num2str(kkk), '.wav']);
             if ischar(path_name) && ischar(file_name)
-                signal = get_current_signal(kkk, 0);
+                signal = get_current_signal(kkk, signals_fs(kkk), 0);
                 if isempty(signal)
                     return;
                 end
@@ -355,7 +349,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                         signal = signal / max_abs;
                         warning(['Reduced signal ', num2str(kkk), ' by ', num2str(20*log10(max_abs), 3), ' dB to avoid clipping'])
                     end
-                    audiowrite([path_name, file_name], signal, config.fs);
+                    audiowrite([path_name, file_name], signal, signals_fs(kkk));
                 else
                     % MAT file
                     save([path_name, file_name], 'signal');
@@ -424,21 +418,21 @@ voctone_h_fig.WindowButtonUpFcn = '';
         tmp_range = highlight_range;
         delete_highlights;   % they wouldn't survive the plotting
         for kk = 1:num_signals
-            t0 = max(floor(time_range_view(1)*config.fs), 1);
-            t1 = min(ceil(time_range_view(2)*config.fs), signal_lengths(kk));
-            len = t1 - t0;
+            t0_smpls = max(floor(time_range_view(1)*signals_fs(kk)), 1);
+            t1_smpls = min(ceil(time_range_view(2)*signals_fs(kk)), signal_lengths(kk));
+            len = t1_smpls - t0_smpls;
             if len > max_horizontal_resolution
                 level = ceil(0.5 * log2(len / max_horizontal_resolution));
                 s = signals{kk, level+1};
                 d = 4^level;
-                t0 = ceil((t0-1) / d) + 1;
-                t1 = floor((t1-1) / d) + 1;
+                t0_smpls = ceil((t0_smpls-1) / d) + 1;
+                t1_smpls = floor((t1_smpls-1) / d) + 1;
             else
                 s = signals{kk};
                 d = 1;
             end
-            s = s(t0:t1, :);
-            t = (t0 + (0:size(s, 1)-1) * (t1-t0+1) / max(length(s), 1)) / (config.fs / d);
+            s = s(t0_smpls:t1_smpls, :);
+            t = (t0_smpls + (0:size(s, 1)-1) * (t1_smpls-t0_smpls+1) / max(length(s), 1)) / (signals_fs(kk) / d);
             plot(h_ax{kk}, t, s, 'ButtonDownFcn', @plot_button_down_callback);
             h_ax{kk}.UserData = kk;
             h_ax{kk}.Color = selection_color * selected_axes(kk) + axes_color * (1-selected_axes(kk));
@@ -501,8 +495,9 @@ voctone_h_fig.WindowButtonUpFcn = '';
             end
             s = [];
             legend_str = {};
+            spec_fs = max(signals_fs(kk));
             for i = 1:length(kk)
-                s_ = get_current_signal(kk(i), config.fs / 20);
+                s_ = get_current_signal(kk(i), spec_fs, spec_fs / 20);
                 if ~isempty(s_)
                     s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], ...
                          [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
@@ -522,9 +517,9 @@ voctone_h_fig.WindowButtonUpFcn = '';
             end
             ax_spec = axes('Parent', voctone_h_spec(1));
             if strcmp(get(findall(h_f_scale.Children, 'Label', 'Linear'), 'Checked'), 'on')
-                plot_spec_lin(s);
+                plot_spec_lin(s, spec_fs);
             else
-                plot_spec_perc(s);
+                plot_spec_perc(s, spec_fs);
             end
             ax_spec.FontSize = axes_label_font_size;
             grid(ax_spec, 'on');
@@ -536,10 +531,10 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
 
         % spectrum on linear scale
-        function plot_spec_lin(s)
-            nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
-            d = floor(spectrum_sampling_Hz / (config.fs / nfft));
-            j = d * round(spectrum_smoothing_Hz / (d * config.fs / nfft));
+        function plot_spec_lin(s, spectrum_fs)
+            nfft = 2^nextpow2(max(length(s), spectrum_fs / spectrum_sampling_Hz));
+            d = floor(spectrum_sampling_Hz / (spectrum_fs / nfft));
+            j = d * round(spectrum_smoothing_Hz / (d * spectrum_fs / nfft));
             w = cos((-j+1:j-1)'/j*pi/2).^2;
             w = w / sum(w);
             fx = abs(fft(s, nfft)).^2;
@@ -551,11 +546,12 @@ voctone_h_fig.WindowButtonUpFcn = '';
             end
             fxw = max(fxw, 1e-100);
             fxw = 10 * log10(fxw);
-            f = (0:size(fxw, 1)-1) * d * config.fs / nfft;
+            f = (0:size(fxw, 1)-1) * d * spectrum_fs / nfft;
             plot(ax_spec, f/1e3, fxw);
             f_ = sort(fxw(:));
             v = f_(ceil(length(f_)/100));  % 1 percentile
-            axis(ax_spec, [0, config.fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
+            v = max(v, f_(end) - 100);
+            axis(ax_spec, [0, spectrum_fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(voctone_h_spec(1));
             h_zoom.Enable = 'on';
             h_zoom.ActionPostCallback  = '';
@@ -564,21 +560,21 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
 
         % spectrum on perceptual scale
-        function plot_spec_perc(s)
-            nfft = 2^nextpow2(max(length(s), config.fs / spectrum_sampling_Hz));
+        function plot_spec_perc(s, spectrum_fs)
+            nfft = 2^nextpow2(max(length(s), spectrum_fs / spectrum_sampling_Hz));
             fx = abs(fft(s, nfft)).^2;
-            f_fft_Hz = (0:nfft-1)' / nfft * config.fs;
+            f_fft_Hz = (0:nfft-1)' / nfft * spectrum_fs;
             % rotate
-            i = find(f_fft_Hz >= config.fs + perc2lin(-spectrum_perc_smoothing), 1);
+            i = find(f_fft_Hz >= spectrum_fs + perc2lin(-spectrum_perc_smoothing), 1);
             fx = [fx(i:end, :); fx(1:i-1, :)];
-            f_fft_Hz = [f_fft_Hz(i:end) - config.fs; f_fft_Hz(1:i-1)];
+            f_fft_Hz = [f_fft_Hz(i:end) - spectrum_fs; f_fft_Hz(1:i-1)];
             % remove unused frequencies
-            i = f_fft_Hz > perc2lin(lin2perc(config.fs/2) + spectrum_perc_smoothing);
+            i = f_fft_Hz > perc2lin(lin2perc(spectrum_fs/2) + spectrum_perc_smoothing);
             fx(i, :) = [];
             f_fft_Hz(i) = [];
             % weighting
             [f_fft_p, wght] = lin2perc(f_fft_Hz);
-            f_p_end = lin2perc(config.fs/2);
+            f_p_end = lin2perc(spectrum_fs/2);
             oversmpl_factor = 6;
             perc_n_smpls = round(oversmpl_factor * f_p_end / spectrum_perc_smoothing);
             f_p_step = f_p_end / (perc_n_smpls - 1);
@@ -601,6 +597,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             plot(ax_spec, fxw);
             f_ = sort(fxw(:));
             v = f_(ceil(length(f_)/100));  % 1 percentile
+            v = max(v, f_(end) - 100);
             axis(ax_spec, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(voctone_h_spec(1));
             h_zoom.Enable = 'on';
@@ -609,12 +606,12 @@ voctone_h_fig.WindowButtonUpFcn = '';
             spec_set_xticks;
 
             function spec_set_xticks(varargin)
-                if config.fs <= 32000
+                if spectrum_fs <= 32000
                     xlabels = [0, 200, 500, 1000, 2000, 4000, 8000, 16000];
                 else
                     xlabels = [0, 200, 500, 1000, 2000, 5000, 10000, 20000, 40000];
                 end
-                xlabels = [xlabels(xlabels < config.fs * 0.4), config.fs/2];
+                xlabels = [xlabels(xlabels < spectrum_fs * 0.4), spectrum_fs/2];
                 xtick = 1 + lin2perc(xlabels) / f_p_step;
                 ax_spec.XLim(1) = max(ax_spec.XLim(1), 1);
                 ax_spec.XLim(2) = min(ax_spec.XLim(2), perc_n_smpls+1e-9);
@@ -707,11 +704,12 @@ voctone_h_fig.WindowButtonUpFcn = '';
             ax(i) = axes('Parent', voctone_h_spec(i+1));
             win_len_ms = sscanf(get(findall(h_sg_win.Children, 'Checked', 'on'), 'Label'), '%d ms');
             step_ms = min(win_len_ms/20, 1) ;
-            [s, time_range] = get_current_signal(kk(i), 0, win_len_ms / 2);
+            spec_fs = max(signals_fs(kk));
+            [s, time_range] = get_current_signal(kk(i), spec_fs, 0, win_len_ms / 2);
             % take average between all channels (for now..)
             s = mean(s, 2);
-            win_len = win_len_ms * config.fs / 1e3;
-            step = step_ms * config.fs / 1e3;
+            win_len = win_len_ms * spec_fs / 1e3;
+            step = step_ms * spec_fs / 1e3;
             N = ceil((length(s) - win_len + 1) / step);
             if N > 0
                 U = 10;
@@ -752,7 +750,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 F = max(F, 1e-5 * max(F(:)));
                 F = 20 * log10(F);
                 t = time_range(1) + win_len_ms/2e3 + (-0.5:N) * step_ms/1e3;
-                fr = (-0.5:nfft/2+1)/nfft * config.fs;
+                fr = (-0.5:nfft/2+1)/nfft * spec_fs;
                 F = [F; F(end, :)];
                 F = [F, F(:, end)];
                 pcolor(ax(i), t, fr/1e3, F);
@@ -812,8 +810,8 @@ voctone_h_fig.WindowButtonUpFcn = '';
         write_config;
     end
 
-    function [s, time_range] = get_current_signal(kk, win_len, extra_ms)
-        if nargin < 3
+    function [s, time_range] = get_current_signal(kk, fs_out, win_len_smpls, extra_ms)
+        if nargin < 4
             extra_ms = 0;
         end
         s = signals{kk};
@@ -826,19 +824,22 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
         t0 = t0 - extra_ms / 1e3;
         t1 = t1 + extra_ms / 1e3;
-        t0 = max(round(t0 * config.fs), 1);
-        t1 = min(round(t1 * config.fs), size(s, 1));
+        t0 = max(round(t0 * signals_fs(kk)), 1);
+        t1 = min(round(t1 * signals_fs(kk)), size(s, 1));
+        time_range = [t0, t1] / signals_fs(kk);
         s = double(s(t0:t1, :));
-        smpls = size(s, 1);
-        if win_len > 0
-            % windowing
-            fade_smpls = min(win_len, smpls / 2);
+        if fs_out ~= signals_fs(kk)
+            s = resample(s, fs_out, signals_fs(kk), 100);
+        end
+        % windowing
+        if win_len_smpls > 0
+            smpls = size(s, 1);
+            fade_smpls = min(win_len_smpls, smpls / 2);
             win = sin((1:fade_smpls)' / (fade_smpls+1) * pi/2) .^ 2;
             t = 1:fade_smpls;
             s(t, :) = bsxfun(@times, s(t, :), win);
             s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
         end
-        time_range = [t0, t1] / config.fs;
     end
 
     function start_play(varargin)
@@ -859,12 +860,11 @@ voctone_h_fig.WindowButtonUpFcn = '';
         play_button.Callback = @stop_play;
         if length(play_src) == 1
             % playback from a single axes
-            [s, play_time_range] = get_current_signal(play_src, config.fs / 100);
+            [s, play_time_range] = get_current_signal(play_src, playback_fs, playback_fs / 100);
             if isempty(s)
                 return;
             end
             s = s / signals_max(play_src) * 10^(0.05 * playback_dBov);
-            s = resample(s, playback_fs, config.fs, 50);
         elseif length(play_src) == 2
             % A/B test
             rng('shuffle'); 
@@ -872,7 +872,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             s = {};
             play_time_range = 0;
             for i = 1:2
-                [s{i}, tr] = get_current_signal(play_src(i), config.fs / 100);
+                [s{i}, tr] = get_current_signal(play_src(i), playback_fs, playback_fs / 100);
                 if isempty(s{i})
                     return;
                 end
@@ -880,8 +880,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
                 s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
             end
-            s = [s{1}; zeros(round(config.fs/1e3 * playback_silence_between_A_B_ms), 2); s{2}]; 
-            s = resample(s, playback_fs, config.fs, 50);
+            s = [s{1}; zeros(round(playback_fs/1e3 * playback_silence_between_A_B_ms), 2); s{2}]; 
         end
         player = audioplayer(s, playback_fs, playback_bits);
         player.TimerFcn = @draw_play_cursors;
@@ -939,14 +938,14 @@ voctone_h_fig.WindowButtonUpFcn = '';
         interval = diff(time_range_view) * factor;
         t0 = max(t0, 0);
         t1 = t0 + interval;
-        t1 = min(t1, max(signal_lengths) / config.fs);
+        t1 = min(t1, max(signal_lengths ./ signals_fs));
         set_time_range([t1 - interval, t1], 1);
     end
 
     % update visible time range
     function set_time_range(range, update_slider)
         min_delta = max_zoom_smpls / config.fs;
-        max_time = max(signal_lengths) / config.fs;
+        max_time = max(signal_lengths ./ signals_fs);
         time_range_view(1) = min(max(range(1), 0), max_time - min_delta);
         time_range_view(2) = max(min(range(2), max_time), 0 + min_delta);
         time_range_view = time_range_view + max(min_delta - diff(time_range_view), 0) * [-0.5, 0.5];
@@ -999,7 +998,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
     function plot_button_down_callback(~, ~)
         if strcmp(voctone_h_fig.SelectionType, 'normal')
             kk = get(gca, 'UserData');
-            t = get_mouse_pointer_time * config.fs;
+            t = get_mouse_pointer_time * signals_fs(kk);
             % linearly interpolate
             yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
             text_segment.String = num2str(yval, ' %.3g');
@@ -1097,7 +1096,8 @@ voctone_h_fig.WindowButtonUpFcn = '';
             end
             highlight_range = highlight_range_prelim;
             if delta < 1
-                smpls = delta * config.fs;
+                kk = get(gca, 'UserData');
+                smpls = delta * signals_fs(kk);
                 if smpls < 1000
                     str = [num2str(delta * 1e3, '%.3g'), ' ms (', num2str(smpls, '%.1f'), ')'];
                 else
@@ -1122,7 +1122,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
 
     function slider_moved_callback(~, ~)
         time_diff = diff(time_range_view);
-        time_center = 0.5 * time_diff + time_slider.Value * (max(signal_lengths) / config.fs - time_diff);
+        time_center = 0.5 * time_diff + time_slider.Value * (max(signal_lengths ./ signals_fs) - time_diff);
         set_time_range(time_center + time_diff * [-0.5, 0.5], 0);
     end
 
@@ -1138,6 +1138,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
         set(findall(h_fs.Children, 'Checked', 'on'), 'Checked', 'off');
         src.Checked = 'on';
         write_config;
+        signals_fs = signals_fs * config.fs / fs_old;
         highlight_range = highlight_range * fs_old / config.fs;
         set_time_range(time_range_view * fs_old / config.fs, 1);
         spectrum_update;
