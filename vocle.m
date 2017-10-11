@@ -68,6 +68,7 @@ end
 marker_color = [0.2, 0.3, 0.5];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
+max_horizontal_resolution = 1e5;
 ylim_margin = 1.1;
 min_abs_signal = 1e-99;
 min_selection_frac = 0.002;
@@ -171,11 +172,25 @@ for k = 1:num_signals
             error(['  file not found: ', varargin{k}]);
         else
             try
-                [signals{k}, file_fs(k)] = audioread(arg);
+                if 0
+                    % read directly as doubles (seems slower)
+                    [signals{k}, file_fs(k)] = audioread(arg);
+                else
+                    % read as native and convert to doubles (seems faster)
+                    [signals{k}, file_fs(k)] = audioread(arg, 'native');
+                    if isinteger(signals{k})
+                        data_format = class(signals{k});
+                        max_val = single(max(abs([intmin(data_format), intmax(data_format)])));
+                    else
+                        max_val = 1;
+                    end
+                    signals{k} = single(signals{k}) / max_val;
+                end
             catch
                 % read as shorts without header
+                disp(['Reading a raw shorts: ', arg]);
                 fid = fopen(arg, 'rb');
-                signals{k} = fread(fid, inf, 'short') / 32768;
+                signals{k} = single(fread(fid, inf, 'short') / 32768);
                 fclose(fid);
             end
         end
@@ -192,6 +207,7 @@ if any(file_fs)
     config.fs = max(max(file_fs), first_arg_fs * config.fs);
 end
 set(findall(h_fs.Children, 'Label', num2str(config.fs)), 'Checked', 'on');
+tic
 for k = 1:num_signals
     if ~isreal(signals{k})
         disp(['Warning: signal ', num2str(k), ' is complex; ignoring imaginary part']);
@@ -201,18 +217,38 @@ for k = 1:num_signals
         disp(['Warning: signal ', num2str(k), ' contains NaNs; replacing these by zeros']);
         signals{k}(isnan(signals{k})) = 0;
     end
+    % resample (doesn't support single, so need to convert back and forth)
     if file_fs(k)
         % upsample to highest sampling rate
-        signals{k} = resample(signals{k}, config.fs, file_fs(k));
+        signals{k} = single(resample(double(signals{k}), config.fs, file_fs(k)));
     elseif first_arg_fs
-        signals{k} = resample(signals{k}, config.fs, varargin{1});
+        signals{k} = single(resample(double(signals{k}), config.fs, varargin{1}));
     end
     signal_lengths(k) = size(signals{k}, 1);
-    stmp = signals{k}(:);
-    signals_negative(k) = min(stmp) < 0;
-    signals_positive(k) = max(stmp) > 0;
-    signals_max(k) = max(max(abs(stmp)), min_abs_signal);
+    
+    % for long signals, iteratively reduce 4x in length
+    level = 1;
+    [L, M] = size(signals{k, level});
+    while L > max_horizontal_resolution
+        L2 = ceil(L / 8);
+        s = zeros(2 * L2, M);
+        for m = 1:M
+            tmp = reshape([signals{k, level}(:, m); zeros(8 * L2 - L, 1)], 8, L2);
+            tmp = [min(tmp); max(tmp)];
+            s(:, m) = tmp(:);
+        end
+        signals{k, level+1} = s;
+        level = level + 1;
+        [L, M] = size(s);
+    end
+    
+    % find min/max
+    s = s(:);
+    signals_negative(k) = min(s) < 0;
+    signals_positive(k) = max(s) > 0;
+    signals_max(k) = max(max(abs(s)), min_abs_signal);
 end
+toc
 
 write_config;
 if isempty(voctone_h_spec)
@@ -390,24 +426,19 @@ voctone_h_fig.WindowButtonUpFcn = '';
         for kk = 1:num_signals
             t0 = max(floor(time_range_view(1)*config.fs), 1);
             t1 = min(ceil(time_range_view(2)*config.fs), signal_lengths(kk));
-            s_ = signals{kk};
-            s_ = s_(t0:t1, :);
-            max_smpls = 1e4;
-            [L, M] = size(s_);
-            if L > max_smpls
-                d = ceil(2 * L / max_smpls);
-                L2 = ceil(L / d);
-                s_ = [s_; zeros(d * L2 - L, M)];
-                s = zeros(2 * L2, M);
-                for m = 1:M
-                    tmp = reshape(s_(:, m), d, L2);
-                    tmp = [min(tmp); max(tmp)];
-                    s(:, m) = tmp(:);
-                end
+            len = t1 - t0;
+            if len > max_horizontal_resolution
+                level = ceil(0.5 * log2(len / max_horizontal_resolution));
+                s = signals{kk, level+1};
+                d = 4^level;
+                t0 = ceil((t0-1) / d) + 1;
+                t1 = floor((t1-1) / d) + 1;
             else
-                s = s_;
+                s = signals{kk};
+                d = 1;
             end
-            t = (t0 + (0:size(s, 1)-1) * (t1-t0+1) / max(length(s), 1)) / config.fs;
+            s = s(t0:t1, :);
+            t = (t0 + (0:size(s, 1)-1) * (t1-t0+1) / max(length(s), 1)) / (config.fs / d);
             plot(h_ax{kk}, t, s, 'ButtonDownFcn', @plot_button_down_callback);
             h_ax{kk}.UserData = kk;
             h_ax{kk}.Color = selection_color * selected_axes(kk) + axes_color * (1-selected_axes(kk));
@@ -609,16 +640,18 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
         
         function spec_place_axes(varargin)
-            ax_spec.Units = 'pixels';
-            h_width = voctone_h_spec(1).Position(3);
-            h_height = voctone_h_spec(1).Position(4);
-            width = h_width - left_margin - right_margin;
-            height = h_height - top_margin - bottom_margin_spec;
-            if height > 0 && width > 0
-                ax_spec.Position = [left_margin, bottom_margin_spec, width, height];
+            if isgraphics(voctone_h_spec(1))
+                ax_spec.Units = 'pixels';
+                h_width = voctone_h_spec(1).Position(3);
+                h_height = voctone_h_spec(1).Position(4);
+                width = h_width - left_margin - right_margin;
+                height = h_height - top_margin - bottom_margin_spec;
+                if height > 0 && width > 0
+                    ax_spec.Position = [left_margin, bottom_margin_spec, width, height];
+                end
+                ax_spec.Units = 'normalized';
+                write_config;
             end
-            ax_spec.Units = 'normalized';
-            write_config;
         end
     end
 
@@ -791,9 +824,8 @@ voctone_h_fig.WindowButtonUpFcn = '';
             t0 = time_range_view(1);
             t1 = time_range_view(2);
         end
-        zr = zeros(round(extra_ms * config.fs / 1e3), size(s, 2));
-        s = [zr; s; zr];
-        t1 = t1 + 2 * extra_ms / 1e3;
+        t0 = t0 - extra_ms / 1e3;
+        t1 = t1 + extra_ms / 1e3;
         t0 = max(round(t0 * config.fs), 1);
         t1 = min(round(t1 * config.fs), size(s, 1));
         s = double(s(t0:t1, :));
@@ -806,7 +838,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             s(t, :) = bsxfun(@times, s(t, :), win);
             s(end-t+1, :) = bsxfun(@times, s(end-t+1, :), win);
         end
-        time_range = [t0, t1] / config.fs - extra_ms / 1e3;
+        time_range = [t0, t1] / config.fs;
     end
 
     function start_play(varargin)
