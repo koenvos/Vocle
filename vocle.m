@@ -93,7 +93,6 @@ time_range_view = [];
 highlight_range = [];
 highlight_markers = {};
 player = [];
-play_src = [];
 play_cursors = {};
 
 % try to load configuration
@@ -114,6 +113,7 @@ voctone_h_fig.Name = ' Vocle';
 voctone_h_fig.Color = figure_color;
 voctone_h_fig.ToolBar = 'none';
 voctone_h_fig.MenuBar = 'none';
+voctone_h_fig.WindowKeyPressFcn = @keypress_callback;
 h_file = uimenu(voctone_h_fig, 'Label', '&File', 'Callback', @menu_callback);
 uimenu(h_file, 'Label', 'Open', 'Callback', @open_file_callback);
 h_save = uimenu(h_file, 'Label', 'Save Signal', 'Callback', @save_file_callback);
@@ -273,6 +273,7 @@ slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_cal
 play_button = uicontrol(voctone_h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
 
 update_layout;
+update_play_button;
 
 % show signals
 update_axes_selections([], 'reset');
@@ -852,8 +853,9 @@ voctone_h_fig.WindowButtonUpFcn = '';
             end
             play_cursors = {};
         end
-        if isempty(play_src)
-            play_src = find(selected_axes);
+        play_src = find(selected_axes);
+        if strcmp(play_button.Enable, 'off')
+            return;
         end
         play_button.String = 'Stop';
         play_button.Enable = 'on';
@@ -904,7 +906,6 @@ voctone_h_fig.WindowButtonUpFcn = '';
                     disp('Playout order: top, bottom');
                 end
             end
-            play_src = [];
             update_play_button;
         end
 
@@ -1042,7 +1043,6 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 end
             case 'extend'
                 % Shift + left mouse
-                play_src = n_axes;
                 start_play;
             case 'open'
                 % double click
@@ -1055,7 +1055,6 @@ voctone_h_fig.WindowButtonUpFcn = '';
                         zoom_axes(2);
                     case 'extend'
                         % Shift + double click
-                        play_src = n_axes;
                         start_play;
                 end
         end
@@ -1115,6 +1114,13 @@ voctone_h_fig.WindowButtonUpFcn = '';
             for kkk = 1:num_signals
                 delete(highlight_markers{kkk});
             end
+        end
+    end
+
+    function keypress_callback(~, evt)
+        switch evt.Character
+            case ' '
+                feval(play_button.Callback);
         end
     end
 
