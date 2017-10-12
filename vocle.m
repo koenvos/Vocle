@@ -273,11 +273,11 @@ slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_cal
 play_button = uicontrol(voctone_h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
 
 update_layout;
-update_play_button;
 
 % show signals
 update_axes_selections([], 'reset');
 set_time_range([0, inf], 1);
+update_play_button;
 
 % set figure callbacks
 voctone_h_fig.CloseRequestFcn = @window_close_all_callback;
