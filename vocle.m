@@ -46,6 +46,7 @@ end
 global voctone_h_fig voctone_h_spec;
 
 % settings
+enable_edit_mode = 0;  % overwrite signal segment with value from 0...9 by pressing corresponding number key
 fig_no = 937280;
 axes_label_font_size = 8;
 left_margin = 42;
@@ -826,7 +827,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
         t0 = t0 - extra_ms / 1e3;
         t1 = t1 + extra_ms / 1e3;
         t0 = max(round(t0 * signals_fs(kk)), 1);
-        t1 = min(round(t1 * signals_fs(kk)), size(s, 1));
+        t1 = min(round(t1 * signals_fs(kk)), signal_lengths(kk));
         time_range = [t0, t1] / signals_fs(kk);
         s = double(s(t0:t1, :));
         if fs_out ~= signals_fs(kk)
@@ -947,6 +948,12 @@ voctone_h_fig.WindowButtonUpFcn = '';
     function set_time_range(range, update_slider)
         min_delta = max_zoom_smpls / config.fs;
         max_time = max(signal_lengths ./ signals_fs);
+        if range(1) < 0
+            range = range - range(1);
+        end
+        if range(2) > max_time
+            range = range - (range(2) - max_time);
+        end
         time_range_view(1) = min(max(range(1), 0), max_time - min_delta);
         time_range_view(2) = max(min(range(2), max_time), 0 + min_delta);
         time_range_view = time_range_view + max(min_delta - diff(time_range_view), 0) * [-0.5, 0.5];
@@ -1117,10 +1124,57 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
     end
 
+    signal_prev = [];
     function keypress_callback(~, evt)
-        switch evt.Character
-            case ' '
-                feval(play_button.Callback);
+        if isempty(evt.Character) 
+            return; 
+        end
+        % overwrite selection by a value of 0, 1, 2, ... 9
+        if evt.Character >= '0' && evt.Character <= '9' && enable_edit_mode
+            kk = find(selected_axes);
+            if length(kk) ~= 1
+                return;
+            end
+            if isempty(highlight_range) || abs(diff(highlight_range)) == 0
+                return;
+            end
+            t0 = min(highlight_range);
+            t1 = max(highlight_range);
+            t0_smpls = max(round(t0 * signals_fs(kk)), 1);
+            t1_smpls = min(round(t1 * signals_fs(kk)), signal_lengths(kk));
+            val = single(str2double(evt.Character));
+            signal_prev.kk = kk;
+            signal_prev.signal = {};
+            for m = 1:size(signals, 2)
+                signal_prev.signal{m} = signals{kk, m};
+                if isempty(signals{kk, m})
+                    break;
+                end
+                signals{kk, m}(t0_smpls:t1_smpls) = val;
+                t0_smpls = ceil(t0_smpls/4);
+                t1_smpls = floor(t1_smpls/4);
+            end
+            plot_signals;
+        end
+        % Ctrl-z: restore previous version of signal
+        if strcmp(evt.Key, 'z') && ...
+                ~isempty(evt.Modifier) && strcmp(evt.Modifier, 'control') && ...
+                ~isempty(signal_prev)
+            for m = 1:size(signals, 2)
+                signals{signal_prev.kk, m} = signal_prev.signal{m};
+            end
+            plot_signals;
+        end
+        % Space: start/stop playback
+        if strcmp(evt.Key, 'space')
+            feval(play_button.Callback);
+        end
+        % Arrows: scroll horizontally
+        if strcmp(evt.Key, 'rightarrow')
+            set_time_range(time_range_view + 0.4 * diff(time_range_view), 1);
+        end
+        if strcmp(evt.Key, 'leftarrow')
+            set_time_range(time_range_view - 0.4 * diff(time_range_view), 1);
         end
     end
 
