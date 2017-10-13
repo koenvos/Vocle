@@ -46,7 +46,7 @@ end
 global voctone_h_fig voctone_h_spec;
 
 % settings
-enable_edit_mode = 0;  % overwrite signal segment with value from 0...9 by pressing corresponding number key
+enable_edit_mode = 1;  % overwrite signal segment with value from 0...9 by pressing corresponding number key
 fig_no = 937280;
 axes_label_font_size = 8;
 left_margin = 42;
@@ -69,7 +69,7 @@ end
 marker_color = [0.2, 0.3, 0.5];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
-max_horizontal_resolution = 1e5;
+max_horizontal_resolution = 4e4;
 ylim_margin = 1.1;
 min_abs_signal = 1e-99;
 min_selection_frac = 0.002;
@@ -94,6 +94,7 @@ time_range_view = [];
 highlight_range = [];
 highlight_markers = {};
 player = [];
+play_src = [];
 play_cursors = {};
 
 % try to load configuration
@@ -339,7 +340,11 @@ voctone_h_fig.WindowButtonUpFcn = '';
             kkk = kk(i);
             [file_name, path_name, file_type_ix] = uiputfile(file_types, title_str, ['signal', num2str(kkk), '.wav']);
             if ischar(path_name) && ischar(file_name)
-                signal = get_current_signal(kkk, signals_fs(kkk), 0);
+                if diff(highlight_range)
+                    signal = get_current_signal(kkk, signals_fs(kkk), 0);
+                else
+                    signal = signals{kkk, 1};
+                end
                 if isempty(signal)
                     return;
                 end
@@ -854,9 +859,9 @@ voctone_h_fig.WindowButtonUpFcn = '';
             end
             play_cursors = {};
         end
-        play_src = find(selected_axes);
-        if strcmp(play_button.Enable, 'off')
-            return;
+        % if play command came from mouse click, the source axes is already set
+        if isempty(play_src)
+            play_src = find(selected_axes);
         end
         play_button.String = 'Stop';
         play_button.Enable = 'on';
@@ -907,6 +912,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                     disp('Playout order: top, bottom');
                 end
             end
+            play_src = [];
             update_play_button;
         end
 
@@ -1050,6 +1056,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 end
             case 'extend'
                 % Shift + left mouse
+                play_src = n_axes;
                 start_play;
             case 'open'
                 % double click
@@ -1062,6 +1069,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
                         zoom_axes(2);
                     case 'extend'
                         % Shift + double click
+                        play_src = n_axes;
                         start_play;
                 end
         end
@@ -1144,12 +1152,14 @@ voctone_h_fig.WindowButtonUpFcn = '';
             t1_smpls = min(round(t1 * signals_fs(kk)), signal_lengths(kk));
             val = single(str2double(evt.Character));
             signal_prev.kk = kk;
+            signal_prev.t0_smpls = t0_smpls;
+            signal_prev.t1_smpls = t1_smpls;
             signal_prev.signal = {};
             for m = 1:size(signals, 2)
-                signal_prev.signal{m} = signals{kk, m};
                 if isempty(signals{kk, m})
                     break;
                 end
+                signal_prev.signal{m} = signals{kk, m}(t0_smpls:t1_smpls);
                 signals{kk, m}(t0_smpls:t1_smpls) = val;
                 t0_smpls = ceil(t0_smpls/4);
                 t1_smpls = floor(t1_smpls/4);
@@ -1160,13 +1170,21 @@ voctone_h_fig.WindowButtonUpFcn = '';
         if strcmp(evt.Key, 'z') && ...
                 ~isempty(evt.Modifier) && strcmp(evt.Modifier, 'control') && ...
                 ~isempty(signal_prev)
+            kk = signal_prev.kk;
+            t0_smpls = signal_prev.t0_smpls;
+            t1_smpls = signal_prev.t1_smpls;
             for m = 1:size(signals, 2)
-                signals{signal_prev.kk, m} = signal_prev.signal{m};
+                if isempty(signals{kk, m})
+                    break;
+                end
+                signals{kk, m}(t0_smpls:t1_smpls) = signal_prev.signal{m};
+                t0_smpls = ceil(t0_smpls/4);
+                t1_smpls = floor(t1_smpls/4);
             end
             plot_signals;
         end
         % Space: start/stop playback
-        if strcmp(evt.Key, 'space')
+        if strcmp(evt.Key, 'space') && strcmp(play_button.Enable, 'on')
             feval(play_button.Callback);
         end
         % Arrows: scroll horizontally
