@@ -171,7 +171,8 @@ for k = 1:num_signals
     if ischar(arg)
         % file name
         if ~exist(arg, 'file')
-            error(['  file not found: ', varargin{k}]);
+            disp(['  file not found: ', varargin{k}]);
+            return;
         else
             try
                 if 0
@@ -932,15 +933,25 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
     end
         
-    function t = get_mouse_pointer_time
-        frac = (voctone_h_fig.CurrentPoint(1) - left_margin) / max(voctone_h_fig.Position(3) - left_margin - right_margin, 1);
+    function t = get_mouse_pointer_time(mouse_click)
+        if mouse_click
+            % use last mouse click location
+            frac = (voctone_h_fig.CurrentPoint(1) - left_margin) / ...
+                max(voctone_h_fig.Position(3) - left_margin - right_margin, 1);
+        else
+            % use current mouse location
+            pos = get(0, 'PointerLocation');
+            frac = (pos(1) - voctone_h_fig.Position(1) - left_margin) / ...
+                max(voctone_h_fig.Position(3) - left_margin - right_margin, 1);
+        end
+        frac = min(max(frac, 0), 1);
         t = time_range_view(1) + frac * diff(time_range_view);
     end
 
     function zoom_axes(factor)
         % factor > 1: zoom out; factor < 1: zoom in
         % keep time under mouse constant
-        tmouse = get_mouse_pointer_time;
+        tmouse = get_mouse_pointer_time(0);
         tmouse = min(max(tmouse, time_range_view(1)), time_range_view(2));
         t0 = tmouse - (tmouse - time_range_view(1)) * factor;
         interval = diff(time_range_view) * factor;
@@ -1012,7 +1023,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
     function plot_button_down_callback(~, ~)
         if strcmp(voctone_h_fig.SelectionType, 'normal')
             kk = get(gca, 'UserData');
-            t = get_mouse_pointer_time * signals_fs(kk);
+            t = get_mouse_pointer_time(1) * signals_fs(kk);
             % linearly interpolate
             yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
             text_segment.String = num2str(yval, ' %.3g');
@@ -1036,7 +1047,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             case 'normal'
                 % left mouse: start highlight, move indicator to current axes, setup mouse callbacks
                 time_mouse_down = tic;
-                highlight_start = get_mouse_pointer_time;
+                highlight_start = get_mouse_pointer_time(1);
                 text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                 voctone_h_fig.WindowButtonUpFcn = @button_up_callback;
                 voctone_h_fig.WindowButtonMotionFcn = @button_motion_callback;
@@ -1101,7 +1112,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
         end
 
         function button_motion_callback(~, ~)
-            highlight_cur = get_mouse_pointer_time;
+            highlight_cur = get_mouse_pointer_time(0);
             highlight_range_prelim = [highlight_start, highlight_cur];
             delta = abs(diff(highlight_range_prelim));
             % ignore short, tiny "selections"; they're most likely just clicks
@@ -1187,12 +1198,18 @@ voctone_h_fig.WindowButtonUpFcn = '';
         if strcmp(evt.Key, 'space') && strcmp(play_button.Enable, 'on')
             feval(play_button.Callback);
         end
-        % Arrows: scroll horizontally
+        % Arrows: scroll horizontally / zoom
         if strcmp(evt.Key, 'rightarrow')
             set_time_range(time_range_view + 0.4 * diff(time_range_view), 1);
         end
         if strcmp(evt.Key, 'leftarrow')
             set_time_range(time_range_view - 0.4 * diff(time_range_view), 1);
+        end
+        if strcmp(evt.Key, 'uparrow')
+            zoom_axes(zoom_per_scroll_wheel_step^-1);
+        end
+        if strcmp(evt.Key, 'downarrow')
+            zoom_axes(zoom_per_scroll_wheel_step);
         end
     end
 
