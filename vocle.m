@@ -241,6 +241,7 @@ for k = 1:num_signals
     end
     
     % find min/max
+    s = signals{k, level};
     s = s(:);
     signals_negative(k) = min(s) < 0;
     signals_positive(k) = max(s) > 0;
