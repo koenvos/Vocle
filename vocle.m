@@ -75,7 +75,7 @@ min_abs_signal = 1e-99;
 min_selection_frac = 0.002;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];  % in menu
 default_fs = 48000;  % of input signal, assumed unless otherwise indicated or remembered
-playback_fs = 44100; % of signal played to soundcard
+playback_fs = [48000 44100]; % allowed sampling rates for signal played to soundcard (first is default)
 playback_bits = 24;
 playback_dBov = -1;
 playback_cursor_delay_ms = 50;
@@ -872,9 +872,12 @@ voctone_h_fig.WindowButtonUpFcn = '';
         play_button.String = 'Stop';
         play_button.Enable = 'on';
         play_button.Callback = @stop_play;
+        [~, kk] = max(sum(signals_fs(play_src) == playback_fs, 1));
+        playback_fs_ = playback_fs(kk);
+        disp(['Playing back at ' num2str(playback_fs_), ' Hz']);
         if length(play_src) == 1
             % playback from a single axes
-            [s, play_time_range] = get_current_signal(play_src, playback_fs, playback_fs / 100);
+            [s, play_time_range] = get_current_signal(play_src, playback_fs_, playback_fs_ / 100);
             if isempty(s)
                 return;
             end
@@ -886,7 +889,7 @@ voctone_h_fig.WindowButtonUpFcn = '';
             s = {};
             play_time_range = 0;
             for i = 1:2
-                [s{i}, tr] = get_current_signal(play_src(i), playback_fs, playback_fs / 100);
+                [s{i}, tr] = get_current_signal(play_src(i), playback_fs_, playback_fs_ / 100);
                 if isempty(s{i})
                     return;
                 end
@@ -894,9 +897,9 @@ voctone_h_fig.WindowButtonUpFcn = '';
                 s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
                 s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
             end
-            s = [s{1}; zeros(round(playback_fs/1e3 * playback_silence_between_A_B_ms), 2); s{2}]; 
+            s = [s{1}; zeros(round(playback_fs_/1e3 * playback_silence_between_A_B_ms), 2); s{2}]; 
         end
-        player = audioplayer(s, playback_fs, playback_bits);
+        player = audioplayer(s, playback_fs_, playback_bits);
         player.TimerFcn = @draw_play_cursors;
         player.TimerPeriod = 0.05;
         playback_start_time = tic;
