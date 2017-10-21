@@ -210,8 +210,12 @@ end
 if any(file_fs)
     config.fs = max(max(file_fs), first_arg_fs * config.fs);
 end
-signals_fs = file_fs;
-signals_fs(file_fs == 0) = config.fs;
+if isempty(file_fs)
+    signals_fs = config.fs;
+else
+    signals_fs = file_fs;
+    signals_fs(file_fs == 0) = config.fs;
+end
 set(findall(h_fs.Children, 'Label', num2str(config.fs)), 'Checked', 'on');
 for k = 1:num_signals
     if ~isreal(signals{k})
