@@ -1030,9 +1030,11 @@ voctone_h_fig.WindowButtonUpFcn = '';
             kk = get(gca, 'UserData');
             t = get_mouse_pointer_time(1) * signals_fs(kk);
             % linearly interpolate
-            yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
-            text_segment.String = num2str(yval, ' %.3g');
-            text_segment.Visible = 'on';
+            if signal_lengths(kk) > t
+                yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
+                text_segment.String = num2str(yval, ' %.3g');
+                text_segment.Visible = 'on';
+            end
             % the function called next will set text_segment.Position
         end
         % pass through to next function
