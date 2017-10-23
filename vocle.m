@@ -201,10 +201,13 @@ for k = 1:num_signals
     else
         sz = size(arg);
         if sz(1) > sz(2)
-            signals{k} = arg;
+            signals{k} = single(arg);
         else
-            signals{k} = arg';
+            signals{k} = single(arg');
         end
+        % free up memory
+        varargin{k+first_arg_fs} = [];
+        clear arg;
     end
 end
 if any(file_fs)
@@ -233,7 +236,7 @@ for k = 1:num_signals
     [L, M] = size(signals{k, level});
     while L > max_horizontal_resolution
         L2 = ceil(L / 8);
-        s = zeros(2 * L2, M);
+        s = zeros(2 * L2, M, 'single');
         for m = 1:M
             tmp = reshape([signals{k, level}(:, m); zeros(8 * L2 - L, 1)], 8, L2);
             tmp = [min(tmp); max(tmp)];
