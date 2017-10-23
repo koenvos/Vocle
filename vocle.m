@@ -872,9 +872,16 @@ voctone_h_fig.WindowButtonUpFcn = '';
         play_button.String = 'Stop';
         play_button.Enable = 'on';
         play_button.Callback = @stop_play;
-        [~, kk] = max(sum(signals_fs(play_src) == playback_fs, 1));
-        playback_fs_ = playback_fs(kk);
-        disp(['Playing back at ' num2str(playback_fs_), ' Hz']);
+        src_fs = max(signals_fs(play_src));
+        if any(src_fs == playback_fs)
+            playback_fs_ = playback_fs(src_fs == playback_fs);
+        else
+            % no match; use first allowed sampling rate (= default)
+            playback_fs_ = playback_fs(1);
+        end
+        if verbose
+            disp(['Playing back at ' num2str(playback_fs_), ' Hz']);
+        end
         if length(play_src) == 1
             % playback from a single axes
             [s, play_time_range] = get_current_signal(play_src, playback_fs_, playback_fs_ / 100);
