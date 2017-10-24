@@ -238,7 +238,7 @@ for k = 1:num_signals
         L2 = ceil(L / 8);
         s = zeros(2 * L2, M, 'single');
         for m = 1:M
-            tmp = reshape([signals{k, level}(:, m); zeros(8 * L2 - L, 1)], 8, L2);
+            tmp = reshape([signals{k, level}(:, m); zeros(8 * L2 - L, 1, 'single')], 8, L2);
             tmp = [min(tmp); max(tmp)];
             s(:, m) = tmp(:);
         end
