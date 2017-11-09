@@ -1,41 +1,42 @@
 function vocle(varargin)
 % VOCLE Audio navigator
-%  Vocle lets you view, play and compare audio signals.
-%
-%  Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior. 
-%  Advantages over spclab:
-%   - A/B test (select two signals)
-%   - Stereo support
-%   - Possible to interrrupt playback
-%   - Scroll wheel zooming
-%   - Use sampling rate info from input files, if available
-%   - Remember window locations and sampling rate
-%   - Auto update spectrum and spectrogram when highlighting a new segment
-%   - Option to display spectrum on perceptual frequency scale
-%   - Fix some spclab features that broke over time by changes in Matlab
-%
-%  Usage
-%     vocle([fs,] x, y);         Open vocle with signals x and y, optionally setting the sampling rate to fs 
-%     vocle('x.wav', 'y.mp3');   Open vocle with files x.wav and y.mp3
-%  Vocle reads unrecognized file types as headerless 16-bit mono files. For these you can specify a
-%  sampling rate as the first argument (or set the sampling rate later in the menu). You may also
-%  use a combination of signals and files in the input arguments.
+% Vocle lets you view, play, and compare audio signals.
 % 
-%  Navigation
-%     Left mouse:                Toggle axes selection
-%     Left mouse + drag:         Highlight segment
-%     Right mouse:
-%      - If highlight exists:    Zoom to highlighted segment; remove highlight
-%      - Otherwise:              Zoom out
-%     Double click left:         Zoom out full
-%     Shift + left/right:        Play
-%     Mouse click outside axes:  Remove highlight
-%     Mouse scroll:              Zoom in or out
-%
-%  Vocle requires Matlab 2014b or newer.
+% Features:
+% - Load workspace signals or sound files
+% - Play signals or segments
+% - Blind A/B test two signals
+% - View spectrum, on linear or perceptual scale
+% - View spectrogram
+% - Mono and stereo support
+% 
+% Usage  
+% - Vocle([fs,] x, y);         Open vocle with signals x and y, optionally setting the sampling rate to fs  
+% - Vocle('x.wav', 'y.mp3');   Open vocle with files x.wav and y.mp3  
+% Vocle reads unrecognized file types as headerless 16-bit mono files. For these you can specify a
+% sampling rate as the first argument (or just set the sampling rate later in the menu). You may
+% also combine signals and files in the input arguments.
+% 
+% Navigation
+% Mouse:
+% - Left mouse:                Select/deselect signal
+% - Left mouse + drag:         Highlight segment
+% - Right mouse:
+%   - If highlight exists:     Zoom to highlighted segment; remove highlight
+%   - Otherwise:               Zoom out
+% - Double click left:         Zoom out full
+% - Mouse click outside axes:  Remove highlight
+% - Mouse scroll:              Zoom in or out
+% - Shift + left/right mouse:  Play start/stop
+% Keyboard:
+% - Space bar:                 Play start/stop
+% - Arrow left/right:          Scroll horizontally
+% - Arrow up/down:             Zoom in/out
+% 
+% Vocle is inspired by Thomas Eriksson's spclab, and shares some of its behavior.  
+% 
+% Vocle requires Matlab 2014b or newer.
 
-%  License: Vocle is free, open source and, to my knowledge, unencumbered by patents. Feel free to use 
-%  Vocle in any way you want, but don't blame me if it blows out your ears or other unpleasentness happens.
 %  Copyright 2016, 2017 Koen Vos
 
 if verLessThan('matlab', 'R2014b')
@@ -262,10 +263,14 @@ if isempty(vocle_h_spec)
 else
     % remove deleted handles
     vocle_h_spec = vocle_h_spec(isgraphics(vocle_h_spec));
-    % add "old" to figure titles
+    % add "old" to figure titles, and remove excessive "old"s
     for k = 1:length(vocle_h_spec)
         vocle_h_spec(k).Name = [vocle_h_spec(k).Name, ' old'];
-    end    
+        while strcmp(vocle_h_spec(k).Name(end-7:end), ' old old') && ...
+                ~any(strcmp({vocle_h_spec(1:k-1).Name}, vocle_h_spec(k).Name(1:end-4)))
+            vocle_h_spec(k).Name = vocle_h_spec(k).Name(1:end-4);
+        end
+    end
     % allocate new graphics array and append old ones
     vocle_h_spec = [gobjects(num_signals+1, 1); vocle_h_spec];
 end
