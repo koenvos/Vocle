@@ -1293,8 +1293,10 @@ vocle_h_fig.WindowButtonUpFcn = '';
 
     function window_close_all_callback(src, ~)
         write_config;
-        close(vocle_h_spec(isgraphics(vocle_h_spec)));
-        if ~isgraphics(vocle_h_fig) || src == vocle_h_fig
+        if exist('vocle_h_spec', 'var')
+            close(vocle_h_spec(isgraphics(vocle_h_spec)));
+        end
+        if ~exist('vocle_h_fig', 'var') || ~isgraphics(vocle_h_fig) || src == vocle_h_fig
             closereq;
         end
     end
@@ -1303,7 +1305,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
         if verbose
             disp('save config');
         end
-        if isgraphics(vocle_h_fig)
+        if exist('vocle_h_fig', 'var') && isgraphics(vocle_h_fig)
             config.Position = vocle_h_fig.Position;
         end
         if ishandle(h_sg_win)
@@ -1312,9 +1314,11 @@ vocle_h_fig.WindowButtonUpFcn = '';
         if ishandle(h_f_scale)
             config.spectrum_scale = get(findall(h_f_scale.Children, 'Checked', 'on'), 'Label');
         end
-        for i = 1:length(vocle_h_spec)
-            if ishandle(vocle_h_spec(i))
-                config.spec_Position{i} = vocle_h_spec(i).Position;
+        if exist('vocle_h_spec', 'var')
+            for i = 1:length(vocle_h_spec)
+                if ishandle(vocle_h_spec(i))
+                    config.spec_Position{i} = vocle_h_spec(i).Position;
+                end
             end
         end
         save(config_file, 'config');
