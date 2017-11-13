@@ -47,7 +47,9 @@ end
 global vocle_h_fig vocle_h_spec;
 
 % settings
-enable_edit_mode = 1;  % overwrite signal segment with value from 0...9 by pressing corresponding number key
+enable_keyboard = 1;      % use space bar to start/stop playback, and arrows to scroll and zoom
+enable_edit_mode = 0;     % overwrite signal segment with value from 0...9 by pressing corresponding 
+                          % number key; useful for labeling
 fig_no = 937280;
 axes_label_font_size = 8;
 left_margin = 42;
@@ -116,7 +118,9 @@ vocle_h_fig.Name = ' Vocle';
 vocle_h_fig.Color = figure_color;
 vocle_h_fig.ToolBar = 'none';
 vocle_h_fig.MenuBar = 'none';
-vocle_h_fig.WindowKeyPressFcn = @keypress_callback;
+if enable_keyboard || enable_edit_mode
+    vocle_h_fig.WindowKeyPressFcn = @keypress_callback;
+end
 h_file = uimenu(vocle_h_fig, 'Label', '&File', 'Callback', @menu_callback);
 uimenu(h_file, 'Label', 'Open', 'Callback', @open_file_callback);
 h_save = uimenu(h_file, 'Label', 'Save Signal', 'Callback', @save_file_callback);
@@ -281,9 +285,9 @@ h_ax = cell(num_signals, 1);
 for k = 1:num_signals
     h_ax{k} = axes;
     h_ax{k}.Units = 'pixels';
+    text_segments{k} = uicontrol(vocle_h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
+        'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
 end
-text_segment = uicontrol(vocle_h_fig, 'Style', 'text', 'FontName', 'Helvetica', ...
-    'BackgroundColor', [1, 1, 1], 'Visible', 'off', 'HitTest', 'Off');
 time_slider = uicontrol(vocle_h_fig, 'Style', 'slider', 'Value', 0.5, 'BackgroundColor', axes_color);
 slider_listener = addlistener(time_slider, 'Value', 'PostSet', @slider_moved_callback);
 play_button = uicontrol(vocle_h_fig, 'Style', 'pushbutton', 'String', 'Play', 'FontSize', 9, 'Callback', @start_play);
@@ -294,6 +298,7 @@ update_layout;
 update_axes_selections([], 'reset');
 set_time_range([0, inf], 1);
 update_play_button;
+menu_callback;
 
 % set figure callbacks
 vocle_h_fig.CloseRequestFcn = @window_close_all_callback;
@@ -411,7 +416,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
         end
     end
 
-    function menu_callback(~, ~)
+    function menu_callback(varargin)
         % update menu strings where necessary
         if sum(selected_axes) == 0
             h_spectrum_menu.Enable = 'off';
@@ -1045,15 +1050,16 @@ vocle_h_fig.WindowButtonUpFcn = '';
 
     function plot_button_down_callback(~, ~)
         if strcmp(vocle_h_fig.SelectionType, 'normal')
-            kk = get(gca, 'UserData');
-            t = get_mouse_pointer_time(1) * signals_fs(kk);
-            % linearly interpolate
-            if signal_lengths(kk) > t
-                yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
-                text_segment.String = num2str(yval, ' %.3g');
-                text_segment.Visible = 'on';
+            for kk = 1:num_signals
+                t = get_mouse_pointer_time(1) * signals_fs(kk);
+                % linearly interpolate
+                if signal_lengths(kk) > t
+                    yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
+                    text_segments{kk}.String = num2str(yval, ' %.3g');
+                    text_segments{kk}.Visible = 'on';
+                end
             end
-            % the function called next will set text_segment.Position
+            % the function called next will set text_segments.Position
         end
         % pass through to next function
         axes_button_down_callback(gca, []);
@@ -1073,10 +1079,10 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 % left mouse: start highlight, move indicator to current axes, setup mouse callbacks
                 time_mouse_down = tic;
                 highlight_start = get_mouse_pointer_time(1);
-                text_segment.Position = [src.Position(1)+ 3, sum(src.Position([2, 4])) - 17, 100, 14];
                 vocle_h_fig.WindowButtonUpFcn = @button_up_callback;
                 vocle_h_fig.WindowButtonMotionFcn = @button_motion_callback;
                 for kk = 1:num_signals
+                    text_segments{kk}.Position = [h_ax{kk}.Position(1)+ 3, sum(h_ax{kk}.Position([2, 4])) - 17, 100, 14];
                     highlight_markers{kk} = line([1, 1] * highlight_start, 2 * h_ax{kk}.YLim, ...
                         'Parent', h_ax{kk}, 'Color', marker_color, 'HitTest', 'off');
                 end
@@ -1116,7 +1122,9 @@ vocle_h_fig.WindowButtonUpFcn = '';
         function button_up_callback(~, ~)
             vocle_h_fig.WindowButtonUpFcn = '';
             vocle_h_fig.WindowButtonMotionFcn = '';
-            text_segment.Visible = 'off';
+            for kkk = 1:num_signals
+                text_segments{kkk}.Visible = 'off';
+            end
             if last_action_was_highlight
                 spectrum_update;
                 spectrogram_callback;
@@ -1158,8 +1166,10 @@ vocle_h_fig.WindowButtonUpFcn = '';
             else
                 str = [num2str(delta, '%.0f'), ' sec'];
             end
-            text_segment.String = str;
-            text_segment.Visible = 'on';
+            for kkk = 1:num_signals
+                text_segments{kkk}.String = str;
+                text_segments{kkk}.Visible = 'on';
+            end
             draw_highlights;
             last_action_was_highlight = 1;
             for kkk = 1:num_signals
@@ -1219,22 +1229,24 @@ vocle_h_fig.WindowButtonUpFcn = '';
             end
             plot_signals;
         end
-        % Space: start/stop playback
-        if strcmp(evt.Key, 'space') && strcmp(play_button.Enable, 'on')
-            feval(play_button.Callback);
-        end
-        % Arrows: scroll horizontally / zoom
-        if strcmp(evt.Key, 'rightarrow')
-            set_time_range(time_range_view + 0.4 * diff(time_range_view), 1);
-        end
-        if strcmp(evt.Key, 'leftarrow')
-            set_time_range(time_range_view - 0.4 * diff(time_range_view), 1);
-        end
-        if strcmp(evt.Key, 'uparrow')
-            zoom_axes(zoom_per_scroll_wheel_step^-1);
-        end
-        if strcmp(evt.Key, 'downarrow')
-            zoom_axes(zoom_per_scroll_wheel_step);
+        if enable_keyboard
+            % Space: start/stop playback
+            if strcmp(evt.Key, 'space') && strcmp(play_button.Enable, 'on')
+                feval(play_button.Callback);
+            end
+            % Arrows: scroll horizontally / zoom
+            if strcmp(evt.Key, 'rightarrow')
+                set_time_range(time_range_view + 0.4 * diff(time_range_view), 1);
+            end
+            if strcmp(evt.Key, 'leftarrow')
+                set_time_range(time_range_view - 0.4 * diff(time_range_view), 1);
+            end
+            if strcmp(evt.Key, 'uparrow')
+                zoom_axes(zoom_per_scroll_wheel_step^-1);
+            end
+            if strcmp(evt.Key, 'downarrow')
+                zoom_axes(zoom_per_scroll_wheel_step);
+            end
         end
     end
 
