@@ -60,15 +60,9 @@ top_margin = 12;
 vert_spacing = 23;
 slider_height = 16;
 figure_color = [0.9, 0.9, 0.9];
-if 1
-    axes_color = [0.93, 0.93, 0.93];
-    selection_color = [1, 1, 1];
-    highlight_color = [0.73, 0.82, 0.91];
-else
-    axes_color = [1, 1, 1];
-    selection_color = [0.9, 0.95, 1];
-    highlight_color = [0.75, 0.85, 0.95];
-end
+axes_color = [0.93, 0.93, 0.93];
+selection_color = [1, 1, 1];
+highlight_color = [0.82, 0.82, 0.82];
 marker_color = [0.2, 0.3, 0.5];
 zoom_per_scroll_wheel_step = 1.4;
 max_zoom_smpls = 6;
@@ -164,7 +158,7 @@ elseif ~isfield(config, 'fs')
     config.fs = default_fs;
 end
 num_signals = length(varargin) - first_arg_fs;
-highlight_patches = cell(num_signals, 1);
+highlight_patches = cell(num_signals, 2);
 signals = cell(num_signals, 1);
 signal_lengths = config.fs;  % default, in case of no input args
 signals_negative = zeros(num_signals, 1);
@@ -267,12 +261,27 @@ if isempty(vocle_h_spec)
 else
     % remove deleted handles
     vocle_h_spec = vocle_h_spec(isgraphics(vocle_h_spec));
-    % add "old" to figure titles, and remove excessive "old"s
+    % for each figure without "old" anywhere in the name:
+    % - for all other figures with the same root name:
+    %   - if they end in "old": add " (2)"
+    %   - if they end in "([number])": increment number
+    % - add "old"
     for k = 1:length(vocle_h_spec)
-        vocle_h_spec(k).Name = [vocle_h_spec(k).Name, ' old'];
-        while strcmp(vocle_h_spec(k).Name(end-7:end), ' old old') && ...
-                ~any(strcmp({vocle_h_spec(1:k-1).Name}, vocle_h_spec(k).Name(1:end-4)))
-            vocle_h_spec(k).Name = vocle_h_spec(k).Name(1:end-4);
+        name = vocle_h_spec(k).Name;
+        if ~contains(name, 'old')
+            for kk = k+1:length(vocle_h_spec)
+                name2 = vocle_h_spec(kk).Name;
+                if contains(name2, name)
+                    if strcmp(name2(end-3:end), ' old')
+                        vocle_h_spec(kk).Name = [name2, ' (2)'];
+                    else
+                        i = strfind(name2, '(');
+                        num = str2double(name2(i+1:end-1));
+                        vocle_h_spec(kk).Name = [name2(1:i), num2str(num+1), ')'];
+                    end
+                end
+            end
+            vocle_h_spec(k).Name = [vocle_h_spec(k).Name, ' old'];
         end
     end
     % allocate new graphics array and append old ones
@@ -493,6 +502,9 @@ vocle_h_fig.WindowButtonUpFcn = '';
 
     % Spectrum
     function spectrum_callback(varargin)   % varargin is non-empty if called from menu
+        if all(selected_axes == 0)
+            return;
+        end
         if isgraphics(vocle_h_spec(1))
             % figure already exists, bring to foreground
             figure(vocle_h_spec(1).Number);
@@ -1024,7 +1036,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
     end
 
     function delete_highlights
-        for kk = 1:num_signals
+        for kk = 1:num_signals * 2
             if ~isempty(highlight_patches{kk})
                 delete(highlight_patches{kk});
                 highlight_patches{kk} = [];
@@ -1035,14 +1047,22 @@ vocle_h_fig.WindowButtonUpFcn = '';
 
     function draw_highlights
         if ~isempty(highlight_range)
+            range_vec1 = [0, min(highlight_range) * [1, 1], 0];
+            range_vec2 = [max(highlight_range), max(signal_lengths) * [1, 1], max(highlight_range)];
             for kk = 1:num_signals
-                if isempty(highlight_patches{kk})
-                    highlight_patches{kk} = patch(highlight_range([1, 2, 2, 1]), ...
-                        2 * kron(h_ax{kk}.YLim, [1, 1]), highlight_color, 'Parent', h_ax{kk}, ...
-                        'EdgeColor', marker_color, 'LineWidth', 0.3, 'FaceAlpha', 0.25, 'HitTest', 'off');
-                    uistack(highlight_patches{kk}, 'bottom');
+                if isempty(highlight_patches{kk, 1})
+                    highlight_patches{kk, 1} = patch(range_vec1, 2 * kron(h_ax{kk}.YLim, [1, 1]), ...
+                        highlight_color, 'Parent', h_ax{kk}, 'EdgeColor', marker_color, ...
+                        'LineWidth', 0.3, 'FaceAlpha', 0.2, 'HitTest', 'off');
                 else
-                    highlight_patches{kk}.Vertices(:, 1) = highlight_range([1, 2, 2, 1]);
+                    highlight_patches{kk, 1}.Vertices(:, 1) = range_vec1;
+                end
+                if isempty(highlight_patches{kk, 2})
+                    highlight_patches{kk, 2} = patch(range_vec2, 2 * kron(h_ax{kk}.YLim, [1, 1]), ...
+                        highlight_color, 'Parent', h_ax{kk}, 'EdgeColor', marker_color, ...
+                        'LineWidth', 0.3, 'FaceAlpha', 0.2, 'HitTest', 'off');
+                else
+                    highlight_patches{kk, 2}.Vertices(:, 1) = range_vec2;
                 end
             end
         end
@@ -1247,6 +1267,12 @@ vocle_h_fig.WindowButtonUpFcn = '';
             if strcmp(evt.Key, 'downarrow')
                 zoom_axes(zoom_per_scroll_wheel_step);
             end
+        end
+        if strcmp(evt.Key, 'escape')
+            delete_highlights;
+        end
+        if strcmp(evt.Key, 's')
+            spectrum_callback;
         end
     end
 
