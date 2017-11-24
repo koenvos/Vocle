@@ -587,7 +587,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
             f = (0:size(fxw, 1)-1) * d * spectrum_fs / nfft;
             plot(ax_spec, f/1e3, fxw);
             f_ = sort(fxw(:));
-            v = f_(ceil(length(f_)/100));  % 1 percentile
+            v = f_(ceil(length(f_)/200));  % 0.5 percentile
             v = max(v, f_(end) - 100);
             axis(ax_spec, [0, spectrum_fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(vocle_h_spec(1));
@@ -634,7 +634,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
             fxw = 10 * log10(fxw);
             plot(ax_spec, fxw);
             f_ = sort(fxw(:));
-            v = f_(ceil(length(f_)/100));  % 1 percentile
+            v = f_(ceil(length(f_)/200));  % 0.5 percentile
             v = max(v, f_(end) - 100);
             axis(ax_spec, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(vocle_h_spec(1));
