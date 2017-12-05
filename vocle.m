@@ -74,7 +74,7 @@ file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];  % in menu
 default_fs = 48000;  % of input signal, assumed unless otherwise indicated or remembered
 playback_fs = [48000 44100]; % allowed sampling rates for signal played to soundcard (first is default)
 playback_bits = 24;
-playback_dBov = -1;
+playback_dBov = -0.5;
 playback_cursor_delay_ms = 50;
 playback_silence_between_A_B_ms = 500;
 spectrum_sampling_Hz = 2;
@@ -89,7 +89,6 @@ h_ax = [];
 selected_axes = [];
 time_range_view = [];
 highlight_range = [];
-highlight_markers = {};
 player = [];
 play_src = [];
 play_cursors = {};
@@ -159,6 +158,7 @@ elseif ~isfield(config, 'fs')
 end
 num_signals = length(varargin) - first_arg_fs;
 highlight_patches = cell(num_signals, 2);
+highlight_markers = cell(num_signals, 2);
 signals = cell(num_signals, 1);
 signal_lengths = config.fs;  % default, in case of no input args
 signals_negative = zeros(num_signals, 1);
@@ -588,7 +588,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
             plot(ax_spec, f/1e3, fxw);
             f_ = sort(fxw(:));
             v = f_(ceil(length(f_)/200));  % 0.5 percentile
-            v = max(v, f_(end) - 100);
+            v = max(v, f_(end) - 120);
             axis(ax_spec, [0, spectrum_fs/2e3, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(vocle_h_spec(1));
             h_zoom.Enable = 'on';
@@ -635,7 +635,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
             plot(ax_spec, fxw);
             f_ = sort(fxw(:));
             v = f_(ceil(length(f_)/200));  % 0.5 percentile
-            v = max(v, f_(end) - 100);
+            v = max(v, f_(end) - 120);
             axis(ax_spec, [1, perc_n_smpls+1e-9, v-1, f_(end) + max((f_(end)-v) * 0.05, 1)]);
             h_zoom = zoom(vocle_h_spec(1));
             h_zoom.Enable = 'on';
@@ -1050,20 +1050,12 @@ vocle_h_fig.WindowButtonUpFcn = '';
             range_vec1 = [0, min(highlight_range) * [1, 1], 0];
             range_vec2 = [max(highlight_range), max(signal_lengths) * [1, 1], max(highlight_range)];
             for kk = 1:num_signals
-                if isempty(highlight_patches{kk, 1})
-                    highlight_patches{kk, 1} = patch(range_vec1, 2 * kron(h_ax{kk}.YLim, [1, 1]), ...
-                        highlight_color, 'Parent', h_ax{kk}, 'EdgeColor', marker_color, ...
-                        'LineWidth', 0.3, 'FaceAlpha', 0.2, 'HitTest', 'off');
-                else
-                    highlight_patches{kk, 1}.Vertices(:, 1) = range_vec1;
-                end
-                if isempty(highlight_patches{kk, 2})
-                    highlight_patches{kk, 2} = patch(range_vec2, 2 * kron(h_ax{kk}.YLim, [1, 1]), ...
-                        highlight_color, 'Parent', h_ax{kk}, 'EdgeColor', marker_color, ...
-                        'LineWidth', 0.3, 'FaceAlpha', 0.2, 'HitTest', 'off');
-                else
-                    highlight_patches{kk, 2}.Vertices(:, 1) = range_vec2;
-                end
+                highlight_patches{kk, 1} = patch(range_vec1, 2 * kron(h_ax{kk}.YLim, [1, 1]), ...
+                    highlight_color, 'Parent', h_ax{kk}, 'EdgeColor', marker_color, ...
+                    'LineWidth', 0.3, 'FaceAlpha', 0.2, 'HitTest', 'off');
+                highlight_patches{kk, 2} = patch(range_vec2, 2 * kron(h_ax{kk}.YLim, [1, 1]), ...
+                    highlight_color, 'Parent', h_ax{kk}, 'EdgeColor', marker_color, ...
+                    'LineWidth', 0.3, 'FaceAlpha', 0.2, 'HitTest', 'off');
             end
         end
     end
@@ -1102,7 +1094,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 vocle_h_fig.WindowButtonUpFcn = @button_up_callback;
                 vocle_h_fig.WindowButtonMotionFcn = @button_motion_callback;
                 for kk = 1:num_signals
-                    text_segments{kk}.Position = [h_ax{kk}.Position(1)+ 3, sum(h_ax{kk}.Position([2, 4])) - 17, 100, 14];
+                    text_segments{kk}.Position = [h_ax{kk}.Position(1) + 3, sum(h_ax{kk}.Position([2, 4])) - 17, 100, 14];
                     highlight_markers{kk} = line([1, 1] * highlight_start, 2 * h_ax{kk}.YLim, ...
                         'Parent', h_ax{kk}, 'Color', marker_color, 'HitTest', 'off');
                 end
@@ -1145,13 +1137,14 @@ vocle_h_fig.WindowButtonUpFcn = '';
             for kkk = 1:num_signals
                 text_segments{kkk}.Visible = 'off';
             end
+            for kkk = 1:num_signals * 2
+                delete(highlight_markers{kkk});
+            end
             if last_action_was_highlight
                 spectrum_update;
                 spectrogram_callback;
+                draw_highlights;
             else
-                for kkk = 1:num_signals
-                    delete(highlight_markers{kkk});
-                end
                 if toc(time_mouse_down) < 0.4
                     update_axes_selections(n_axes, 'toggle');
                     update_play_button;
@@ -1165,6 +1158,9 @@ vocle_h_fig.WindowButtonUpFcn = '';
         end
 
         function button_motion_callback(~, ~)
+            if last_action_was_highlight == 0
+                delete_highlights;
+            end
             highlight_cur = get_mouse_pointer_time(0);
             highlight_range_prelim = [highlight_start, highlight_cur];
             delta = abs(diff(highlight_range_prelim));
@@ -1190,10 +1186,14 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 text_segments{kkk}.String = str;
                 text_segments{kkk}.Visible = 'on';
             end
-            draw_highlights;
             last_action_was_highlight = 1;
-            for kkk = 1:num_signals
-                delete(highlight_markers{kkk});
+            for kk = 1:num_signals
+                if isempty(highlight_markers{kk, 2}) || ~isgraphics(highlight_markers{kk, 2})
+                    highlight_markers{kk, 2} = line([1, 1] * highlight_cur, 2 * h_ax{kk}.YLim, ...
+                        'Parent', h_ax{kk}, 'Color', marker_color, 'HitTest', 'off');
+                else
+                    highlight_markers{kk, 2}.XData = [1, 1] * highlight_cur;
+                end
             end
         end
     end
