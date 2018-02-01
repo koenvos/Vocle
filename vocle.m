@@ -100,10 +100,15 @@ if exist(config_file, 'file')
     load(config_file, 'config');
 end
 
-% open figure and use position from config file
-vocle_h_fig = figure(fig_no);
-if isfield(config, 'Position')
-    vocle_h_fig.Position = config.Position;
+if ~exist('vocle_h_fig', 'var') || isempty(vocle_h_fig) || ~isgraphics(vocle_h_fig)
+    % open figure and use position from config file
+    vocle_h_fig = figure(fig_no);
+    if isfield(config, 'Position')
+        vocle_h_fig.Position = config.Position;
+    end
+else
+    % figure already existed, no need to (re)position it
+    vocle_h_fig = figure(fig_no);
 end
 clf(vocle_h_fig);
 vocle_h_fig.NumberTitle = 'off';
