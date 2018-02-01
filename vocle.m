@@ -71,10 +71,10 @@ ylim_margin = 1.1;
 min_abs_signal = 1e-99;
 min_selection_frac = 0.002;
 file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];  % in menu
-default_fs = 48000;  % of input signal, assumed unless otherwise indicated or remembered
+default_fs = 48000;          % of input signal, assumed unless otherwise indicated or remembered
 playback_fs = [48000 44100]; % allowed sampling rates for signal played to soundcard (first is default)
 playback_bits = 24;
-playback_dBov = -0.5;
+playback_dBov = 3;           % positive means it will boost signals as long as they don't overload
 playback_cursor_delay_ms = 50;
 playback_silence_between_A_B_ms = 500;
 spectrum_sampling_Hz = 2;
@@ -914,6 +914,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 return;
             end
             s = s / signals_max(play_src) * 10^(0.05 * playback_dBov);
+            s = s / max(1, max(abs(s)));
         elseif length(play_src) == 2
             % A/B test
             rng('shuffle'); 
@@ -927,6 +928,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 end
                 play_time_range = play_time_range + tr / 2;
                 s{i} = s{i} / signals_max(play_src(i)) * 10^(0.05*playback_dBov);
+                s{i} = s{i} / max(1, max(abs(s{i})));
                 s{i} = repmat(s{i}, [1, 3 - size(s{i}, 2)]);  % always stereo
             end
             s = [s{1}; zeros(round(playback_fs_/1e3 * playback_silence_between_A_B_ms), 2); s{2}]; 
@@ -1067,7 +1069,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 % linearly interpolate
                 if signal_lengths(kk) > t
                     yval = ([1, 0] + [-1, 1] * (t - floor(t))) * double(signals{kk}(floor(t) + [0; 1], :));
-                    text_segments{kk}.String = num2str(yval, ' %.3g');
+                    text_segments{kk}.String = num2str(yval, ' %.3g ');
                     text_segments{kk}.Visible = 'on';
                 end
             end
