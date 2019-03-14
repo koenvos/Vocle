@@ -728,7 +728,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 end
             else
                 vocle_h_spec(i+1) = figure;
-                if isfield(config, 'spec_Position') && length(config.spec_Position) >= i+1
+                if isfield(config, 'spec_Position') && length(config.spec_Position) >= i+1 && ~isempty(config.spec_Position{i+1})
                     vocle_h_spec(i+1).Position = config.spec_Position{i+1};
                 end
             end
@@ -1194,12 +1194,12 @@ vocle_h_fig.WindowButtonUpFcn = '';
                 text_segments{kkk}.Visible = 'on';
             end
             last_action_was_highlight = 1;
-            for kk = 1:num_signals
-                if isempty(highlight_markers{kk, 2}) || ~isgraphics(highlight_markers{kk, 2})
-                    highlight_markers{kk, 2} = line([1, 1] * highlight_cur, 2 * h_ax{kk}.YLim, ...
-                        'Parent', h_ax{kk}, 'Color', marker_color, 'HitTest', 'off');
+            for kkk = 1:num_signals
+                if isempty(highlight_markers{kkk, 2}) || ~isgraphics(highlight_markers{kkk, 2})
+                    highlight_markers{kkk, 2} = line([1, 1] * highlight_cur, 2 * h_ax{kkk}.YLim, ...
+                        'Parent', h_ax{kkk}, 'Color', marker_color, 'HitTest', 'off');
                 else
-                    highlight_markers{kk, 2}.XData = [1, 1] * highlight_cur;
+                    highlight_markers{kkk, 2}.XData = [1, 1] * highlight_cur;
                 end
             end
         end
