@@ -70,12 +70,12 @@ max_horizontal_resolution = 4e4;
 ylim_margin = 1.1;
 min_abs_signal = 1e-99;
 min_selection_frac = 0.002;
-file_fs = [192000, 96000, 48000, 44100, 32000, 16000, 8000];  % in menu
+file_fs = [192000, 96000, 48000, 44100, 32000, 24000, 16000, 8000];  % in menu
 default_fs = 48000;          % of input signal, assumed unless otherwise indicated or remembered
 playback_fs = [48000 44100]; % allowed sampling rates for signal played to soundcard (first is default)
 playback_bits = 24;
-playback_dBov = 3;           % positive means it will boost signals as long as they don't overload
-playback_cursor_delay_ms = 50;
+playback_dBov = 6;           % positive means it will boost signals as long as they don't overload
+playback_cursor_delay_ms = 100;
 playback_silence_between_A_B_ms = 500;
 spectrum_sampling_Hz = 2;
 spectrum_smoothing_Hz = 20;
@@ -83,6 +83,7 @@ spectrum_perc_fc_Hz = 500;
 spectrum_perc_smoothing = 0.025;
 specgram_win_ms = [5, 10, 20, 40, 70];  % window lengths should be a multiple of 10 ms to handle 44100 Hz
 verbose = 0;
+file_path = pwd;
 
 % function-wide variables
 h_ax = [];
@@ -119,11 +120,11 @@ vocle_h_fig.MenuBar = 'none';
 if enable_keyboard || enable_edit_mode
     vocle_h_fig.WindowKeyPressFcn = @keypress_callback;
 end
-h_file = uimenu(vocle_h_fig, 'Label', '&File', 'Callback', @menu_callback);
-uimenu(h_file, 'Label', 'Open', 'Callback', @open_file_callback);
-h_save = uimenu(h_file, 'Label', 'Save Signal', 'Callback', @save_file_callback);
+h_file = uimenu(vocle_h_fig, 'Label', '&Open', 'Callback', @open_file_callback);
+h_save = uimenu(vocle_h_fig, 'Label', '&Save', 'Callback', @menu_callback);
+h_save = uimenu(h_save, 'Label', 'Save Signal', 'Callback', @save_file_callback);
 % the following line uses the undocumented function filemenufcn()... might break
-uimenu(h_file, 'Label', 'Save Figure', 'Callback', 'filemenufcn(gcbf, ''FileSaveAs'')');
+uimenu(h_save, 'Label', 'Save Figure', 'Callback', 'filemenufcn(gcbf, ''FileSaveAs'')');
 h_visualize = uimenu(vocle_h_fig, 'Label', '&Visualize', 'Callback', @menu_callback);
 h_spectrum_menu = uimenu(h_visualize, 'Label', 'Spectrum', 'Callback', @spectrum_callback);
 h_specgram_menu = uimenu(h_visualize, 'Label', 'Spectrogram', 'Callback', @spectrogram_callback);
@@ -156,7 +157,7 @@ set(findall(h_sg_win.Children, 'Label', config.specgram_win), 'Checked', 'on');
 % check if first argument is sampling rate, otherwise use the config value
 first_arg_fs = 0;
 if length(varargin)>1 && isscalar(varargin{1}) && isnumeric(varargin{1})
-    config.fs = varargin{1};
+    config.fs = double(varargin{1});
     first_arg_fs = 1;
 elseif ~isfield(config, 'fs')
     config.fs = default_fs;
@@ -178,6 +179,7 @@ for k = 1:num_signals
             disp(['  file not found: ', varargin{k}]);
             return;
         else
+            file_path = fileparts(arg);  % set file path to path of last input file
             try
                 if 0
                     % read as doubles (seems slower)
@@ -341,7 +343,10 @@ vocle_h_fig.WindowButtonUpFcn = '';
     function open_file_callback(~, ~)
         file_types = {'*.wav;*.mp3;*.mp4;*.m4a;*.flac;*.ogg;*.pcm;*.raw)', ...
             'Audio files (*.wav,*.mp3,*.mp4,*.m4a,*.flac,*.ogg,*.pcm,*.raw)'};
+        cur_path = pwd;
+        cd(file_path);
         [file_names, path_name] = uigetfile(file_types, 'Open audio file(s)', 'MultiSelect', 'on');
+        cd(cur_path);
         if isempty(file_names)
             return;
         end
@@ -540,7 +545,9 @@ vocle_h_fig.WindowButtonUpFcn = '';
             legend_str = {};
             spec_fs = max(signals_fs(kk));
             for i = 1:length(kk)
-                s_ = get_current_signal(kk(i), spec_fs, spec_fs / 20);
+                win_len_smpls = spec_fs / 200;
+                %win_len_smpls = 0;
+                s_ = get_current_signal(kk(i), spec_fs, win_len_smpls);
                 if ~isempty(s_)
                     s = [[s; zeros(size(s_,1)-size(s,1), size(s,2))], ...
                          [s_; zeros(size(s,1)-size(s_,1), size(s_,2))]];
@@ -938,6 +945,7 @@ vocle_h_fig.WindowButtonUpFcn = '';
             end
             s = [s{1}; zeros(round(playback_fs_/1e3 * playback_silence_between_A_B_ms), 2); s{2}]; 
         end
+        s = [zeros(playback_fs_ / 10, size(s, 2)); s; zeros(playback_fs_ / 10, size(s, 2))];
         player = audioplayer(s, playback_fs_, playback_bits);
         player.TimerFcn = @draw_play_cursors;
         player.TimerPeriod = 0.05;
